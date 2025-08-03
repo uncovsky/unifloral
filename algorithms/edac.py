@@ -327,8 +327,8 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset):
 
             # Calculate the bias estimate
             bias_estimates = jnp.mean(
-                    perturbed_q_values - jnp.expand_dims(q_pred, axis=0)
-                axis=0,
+                perturbed_q_values - jnp.expand_dims(q_pred, axis=0)
+                axis=0
             )
 
             return bias_estimates
