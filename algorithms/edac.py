@@ -220,6 +220,8 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset):
         agent_state = agent_state._replace(alpha=updated_alpha)
         alpha = jnp.exp(alpha_apply_fn(agent_state.alpha.params))
 
+        
+
         # --- Update actor ---
         @partial(jax.value_and_grad, has_aux=True)
         def _actor_loss_function(params, rng):
@@ -236,6 +238,7 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset):
             rng = jax.random.split(rng, args.batch_size)
             loss, entropy, q_min, q_std = jax.vmap(_compute_loss)(rng, batch)
             return loss.mean(), (entropy.mean(), q_min.mean(), q_std.mean())
+
 
         rng, rng_actor = jax.random.split(rng)
         (actor_loss, (entropy, q_min, q_std)), actor_grad = _actor_loss_function(
@@ -291,11 +294,45 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset):
             critic_loss = value_loss + args.eta * diversity_loss
             return critic_loss, (value_loss, diversity_loss)
 
+
         (critic_loss, (value_loss, diversity_loss)), critic_grad = _q_loss_fn(
             agent_state.vec_q.params
         )
         updated_q = agent_state.vec_q.apply_gradients(grads=critic_grad)
         agent_state = agent_state._replace(vec_q=updated_q)
+
+        # --- Perturb Q-values, calculate conservativeness ---
+        def get_bias_estimates(params, variances):
+            rng, rng_q = jax.random.split(rng)
+            rng_q = jax.random.split(rng_q, variances.shape[0])
+
+            # Calculate original Q-values again
+            q_pred = q_apply_fn(agent_state.vec_q.params, batch.obs, batch.action)
+
+            def _perturb_q_values(rng, transition, noise_variance):
+                eps = jax.random.uniform(rng, transition.obs.shape[:-1] + (1,), -noise_variance, noise_variance)
+                # get perturbed actions, clip them
+                perturbed_action = transition.action + eps
+                perturbed_action = jnp.clip(perturbed_action, -1.0, 1.0)
+
+                # compute perturbed Q-values
+                perturbed_q_values = q_apply_fn(
+                    agent_state.vec_q.params, transition.obs, perturbed_action
+                    )
+                return perturbed_q_values
+
+            perturbed_q_values = jax.vmap(
+                _perturb_q_values, in_axes=(0, None, None)
+            )(rng_q, batch, variances)
+
+            # Calculate the bias estimate
+            bias_estimates = jnp.mean(
+                    perturbed_q_values - jnp.expand_dims(q_pred, axis=0)
+                axis=0,
+            )
+
+            return bias_estimates
+
 
         loss = {
             "critic_loss": critic_loss,
@@ -308,6 +345,15 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset):
             "q_min": q_min,
             "q_std": q_std,
         }
+
+        num_perturbations = 3
+        # Perturb actions from support
+        variances = jnp.linspace(0.01, 0.15, num_perturbations)
+        bias_estimates = get_bias_estimates(agent_state.vec_q.params, variances)
+
+        for i, var in enumerate(variances):
+            loss[f"bias_estimate_{var}"] = bias_estimates[i]
+
         return (rng, agent_state), loss
 
     return _train_step
