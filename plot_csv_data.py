@@ -9,7 +9,13 @@ import numpy as np
 def ensure_dir(p: Path):
     p.mkdir(parents=True, exist_ok=True)
 
+
 def plot_individual(csv_path: Path, out_root: Path):
+
+    """
+        For each project exported into a csv (and each metric considered)
+        create a plot which included every run individually.
+    """
     df = pd.read_csv(csv_path)
 
     # require _step for x-axis
@@ -53,6 +59,10 @@ def plot_individual(csv_path: Path, out_root: Path):
         plt.close()
 
 def aggregate_and_shared_plot(csv_paths, out_root: Path):
+    """
+        Aggregate metrics across runs for each algorithm and display them along
+        std bars in a shared plot. 
+    """
     # For each csv (algorithm), we collect per-run data, align on _step, compute mean/std per metric
     alg_aggregates = {}  # alg_name -> dict(metric -> DataFrame with columns step, mean, std)
     for csv_path in csv_paths:
@@ -77,11 +87,8 @@ def aggregate_and_shared_plot(csv_paths, out_root: Path):
                 runs.append(tmp)
             if not runs:
                 continue
-            concat = pd.concat(runs, axis=1)  # index: _step, columns: each run
-            # Reindex to sorted steps (intersection or union? we do intersection to ensure all runs contribute)
-            # To be robust, we can forward-fill missing, but here take union and interpolate.
+            concat = pd.concat(runs, axis=1)  
             concat = concat.sort_index()
-            # Compute mean/std across runs, skipping NaNs
             mean = concat.mean(axis=1)
             std = concat.std(axis=1)
             per_metric_agg[metric] = pd.DataFrame({
@@ -91,8 +98,6 @@ def aggregate_and_shared_plot(csv_paths, out_root: Path):
             })
         alg_aggregates[alg_name] = per_metric_agg
 
-    # Shared plots: for each metric present in any algorithm, plot mean lines per algorithm with shaded std
-    # gather all metric names across algorithms
     all_metrics = set()
     for per in alg_aggregates.values():
         all_metrics.update(per.keys())
@@ -124,6 +129,12 @@ def aggregate_and_shared_plot(csv_paths, out_root: Path):
 
 
 def plot_bias_estimates_avg(csv_path: Path, out_root: Path):
+    """ 
+        Bias estimates need to be treated a little differently.
+        They are aggregated across runs of a single algorithm and displayed
+        alongside each other (see how pessimism varies with more OOD actions)
+    """
+
     df = pd.read_csv(csv_path)
     if "_step" not in df.columns:
         raise ValueError(f"{csv_path} missing '_step' column.")
