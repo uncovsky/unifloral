@@ -485,9 +485,10 @@ if __name__ == "__main__":
         )
         print(f"Evaluating final agent for {final_iters} iterations...")
         _rng = jax.random.split(rng, final_iters)
-        rets = onp.concat(
+        rets = onp.concatenate(
             [eval_agent(args, _rng, env, agent_state) for _rng in _rng]
         )
+        env.close()
         scores = d4rl.get_normalized_score(args.dataset, rets) * 100.0
         agg_fn = lambda x, k: {
             k: x,
