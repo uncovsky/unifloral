@@ -6,7 +6,11 @@
 
 import os
 import sys
+
+# prevent from grabbing all mem by XLA backend
+os.environ["JAX_PLATFORM_NAME"] = "cpu"
 import jax
+
 import d4rl
 import time
 import gym
@@ -18,6 +22,11 @@ MSG_PARAM_BOX = {
         "cql_min_q_weight" :  [0.0, 0.5],
         "actor_lcb_coef" : [1.0, 8.0],
 }
+
+
+# Make the scripts run with gpu
+algo_env = os.environ.copy()
+algo_env.pop("JAX_PLATFORM_NAME", None)
 
 
 MUJOCO_TASKS = [
@@ -73,12 +82,11 @@ def train():
     wandb_team = "ahoj"
 
 
-    learning_steps = 1000
-    training_seeds_num = 1
+    learning_steps = 1000000
+    training_seeds_num = 5
 
     # Initialize random number generator
     rng = jax.random.PRNGKey(42)
-
 
     # product of algorithms and datasets
     for algorithm in algorithms:
@@ -106,7 +114,6 @@ def train():
                     "--log",
                     "--dataset", dataset,
                     "--num_updates", str(learning_steps),
-                    "--eval-final-episodes", "8",
                     "--wandb_team", wandb_team,
                     "--wandb_project", f"{algorithm}_{dataset}_{timestamp}",
                     "--seed", str(seed),
@@ -117,7 +124,7 @@ def train():
                     command.extend([f"--{key}", f"{value:.4f}"])
 
                 print("Running:", command)
-                subprocess.run(command, check=True)
+                subprocess.run(command, check=True, env=algo_env)
                     
 
 if __name__ == "__main__":
