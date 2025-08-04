@@ -157,7 +157,13 @@ def eval_agent(args, rng, env, agent_state):
     cum_reward = onp.zeros(args.eval_workers)
     rng, rng_reset = jax.random.split(rng)
     rng_reset = jax.random.split(rng_reset, args.eval_workers)
-    obs = env.reset()
+
+    def _rng_to_integer_seed(rng):
+        return int(jax.random.randint(rng, (), 0, jnp.iinfo(jnp.int32).max))
+    seeds_reset = [_rng_to_integer_seed(rng) for rng in rng_reset]
+    print(seeds_reset)
+
+    obs = env.reset(seed=seeds_reset)
 
     # --- Rollout agent ---
     @jax.jit
@@ -488,6 +494,7 @@ if __name__ == "__main__":
         rets = onp.concatenate(
             [eval_agent(args, _rng, env, agent_state) for _rng in _rng]
         )
+        print(rets)
         env.close()
         scores = d4rl.get_normalized_score(args.dataset, rets) * 100.0
         agg_fn = lambda x, k: {
