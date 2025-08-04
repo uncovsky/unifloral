@@ -160,9 +160,8 @@ def eval_agent(args, rng, env, agent_state):
 
     def _rng_to_integer_seed(rng):
         return int(jax.random.randint(rng, (), 0, jnp.iinfo(jnp.int32).max))
-    seeds_reset = [_rng_to_integer_seed(rng) for rng in rng_reset]
-    print(seeds_reset)
 
+    seeds_reset = [_rng_to_integer_seed(rng) for rng in rng_reset]
     obs = env.reset(seed=seeds_reset)
 
     # --- Rollout agent ---
