@@ -373,7 +373,6 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset):
         # lol
         variances_py = [0.01, 0.08, 0.15]
         bias_estimates = get_bias_estimates(rng, agent_state.vec_q.params, variances)
-        print(bias_estimates.shape)
 
         loss = {
             "critic_loss": critic_loss,
