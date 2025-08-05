@@ -9,6 +9,11 @@ import sys
 
 # prevent from grabbing all mem by XLA backend
 os.environ["JAX_PLATFORM_NAME"] = "cpu"
+
+#os.environ["XLA_FLAGS"] = "--xla_gpu_autotune_level=0"
+os.environ["OMP_NUM_THREADS"] = "1"
+os.environ["MKL_NUM_THREADS"] = "1"
+
 import jax
 
 import d4rl
@@ -22,7 +27,6 @@ MSG_PARAM_BOX = {
         "cql_min_q_weight" :  [0.0, 0.5],
         "actor_lcb_coef" : [1.0, 8.0],
 }
-
 
 # Make the scripts run with gpu
 algo_env = os.environ.copy()
@@ -74,7 +78,7 @@ def train():
     Main function to train the algorithm.
     """
 
-    algorithms = ["msg"]
+    algorithms = ["msg", "cql", "sac_n"]
 
     # Do locomotion
     datasets = MUJOCO_TASKS
@@ -83,14 +87,14 @@ def train():
 
 
     learning_steps = 1000000
-    training_seeds_num = 5
+    training_seeds_num = 3
 
     # Initialize random number generator
     rng = jax.random.PRNGKey(42)
 
     # product of algorithms and datasets
-    for algorithm in algorithms:
-        for dataset in datasets:
+    for dataset in datasets:
+        for algorithm in algorithms:
 
             timestamp = time.strftime("%Y%m%d-%H%M%S")
 
@@ -101,17 +105,39 @@ def train():
                 return int(jax.random.randint(rng, (), 0, jnp.iinfo(jnp.int32).max))
 
             seeds = [_rng_to_integer_seed(seed) for seed in rng_seeds]
+            hyperparams_all = {
+                    "cql_min_q_weight" :  [0.0, 0.3, 0.5],
+                    "actor_lcb_coef" : [2.0, 2.0, 2.0],
+            }
 
-            for seed in seeds:
+            if algorithm == "cql":
+                hyperparams_all = {
+                        "cql_min_q_weight" :  [10.0, 5.0, 1.0],
+                        "cql_temperature" : [1.0, 1.0, 1.0],
+                }
+
+            if algorithm == "sac_n":
+                hyperparams_all = {
+                        "num_critics" :  [10, 20, 50]
+                }
+
+
+
+
+            for i, seed in enumerate(seeds):
                 # Sample hyperparameters
                 rng, rng_hyperparams = jax.random.split(rng)
-                hyperparams = sample_hyperparameters(MSG_PARAM_BOX, rng_hyperparams)
+
+                # hyperparams = sample_hyperparameters(MSG_PARAM_BOX, rng_hyperparams)
+                hyperparams = { k : v[i] for k, v in hyperparams_all.items() }
+
                 print(f"Training {algorithm} on {dataset} with seed {seed} with hyperparameters {hyperparams}")
 
                 command = [
                     "nice", "-n", "19",
                     "python3", f"algorithms/{algorithm}.py",
                     "--log",
+                    "--eval-workers", "100",
                     "--dataset", dataset,
                     "--num_updates", str(learning_steps),
                     "--wandb_team", wandb_team,
@@ -125,7 +151,7 @@ def train():
 
                 print("Running:", command)
                 subprocess.run(command, check=True, env=algo_env)
-                    
+
 
 if __name__ == "__main__":
     train()
