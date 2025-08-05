@@ -121,9 +121,6 @@ def train():
                         "num_critics" :  [10, 20, 50]
                 }
 
-
-
-
             for i, seed in enumerate(seeds):
                 # Sample hyperparameters
                 rng, rng_hyperparams = jax.random.split(rng)
@@ -150,7 +147,11 @@ def train():
                     command.extend([f"--{key}", f"{value:.4f}"])
 
                 print("Running:", command)
-                subprocess.run(command, check=True, env=algo_env)
+                try:
+                    subprocess.run(command, check=True, env=algo_env)
+                except:
+                    print("Failed"!)
+
 
 
 if __name__ == "__main__":
