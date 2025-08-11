@@ -153,16 +153,16 @@ def create_train_state(args, rng, network, dummy_input, lr=None):
 def eval_agent(args, rng, env, agent_state):
     # --- Reset environment ---
     step = 0
-    #returned = onp.zeros(args.eval_workers).astype(bool)
-    # sync, not vectorized
-    cum_reward = onp.zeros(1)
+    returned = onp.zeros(args.eval_workers).astype(bool)
+    cum_reward = onp.zeros(args.eval_workers)
     rng, rng_reset = jax.random.split(rng)
+    rng_reset = jax.random.split(rng_reset, args.eval_workers)
 
     def _rng_to_integer_seed(rng):
         return int(jax.random.randint(rng, (), 0, jnp.iinfo(jnp.int32).max))
 
-    seed_reset = _rng_to_integer_seed(rng_reset)
-    obs = env.reset(seed=seed_reset)
+    seeds_reset = [_rng_to_integer_seed(rng) for rng in rng_reset]
+    obs = env.reset(seed=seeds_reset)
 
     # --- Rollout agent ---
     @jax.jit
@@ -173,11 +173,11 @@ def eval_agent(args, rng, env, agent_state):
         return jnp.nan_to_num(action)
 
     max_episode_steps = env.env_fns[0]().spec.max_episode_steps
-
-    while step < max_episode_steps and not done:
+    while step < max_episode_steps and not returned.all():
         # --- Take step in environment ---
         step += 1
         rng, rng_step = jax.random.split(rng)
+        rng_step = jax.random.split(rng_step, args.eval_workers)
         action = _policy_step(rng_step, jnp.array(obs))
         obs, reward, done, info = env.step(onp.array(action))
 
@@ -185,7 +185,7 @@ def eval_agent(args, rng, env, agent_state):
         cum_reward += reward * ~returned
         returned |= done
 
-    if step >= max_episode_steps and not done:
+    if step >= max_episode_steps and not returned.all():
         warnings.warn("Maximum steps reached before all episodes terminated")
     return cum_reward
 
@@ -427,8 +427,8 @@ if __name__ == "__main__":
         )
 
     # --- Initialize environment and dataset ---
-    env = gym.make(args.dataset)
-    dataset = d4rl.qlearning_dataset(env)
+    env = gym.vector.make(args.dataset, num_envs=args.eval_workers)
+    dataset = d4rl.qlearning_dataset(gym.make(args.dataset))
     dataset = Transition(
         obs=jnp.array(dataset["observations"]),
         action=jnp.array(dataset["actions"]),
