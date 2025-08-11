@@ -6,13 +6,11 @@
 
 import os
 import sys
+import signal
 
 # prevent from grabbing all mem by XLA backend
 os.environ["JAX_PLATFORM_NAME"] = "cpu"
-
-#os.environ["XLA_FLAGS"] = "--xla_gpu_autotune_level=0"
-os.environ["OMP_NUM_THREADS"] = "1"
-os.environ["MKL_NUM_THREADS"] = "1"
+os.environ["XLA_FLAGS"] = "--xla_gpu_autotune_level=0"
 
 import jax
 
@@ -21,6 +19,7 @@ import time
 import gym
 import jax.numpy as jnp
 import subprocess
+import multiprocessing as mp
 
 
 MSG_PARAM_BOX = {
@@ -32,6 +31,7 @@ MSG_PARAM_BOX = {
 algo_env = os.environ.copy()
 algo_env.pop("JAX_PLATFORM_NAME", None)
 
+mp.set_start_method("spawn", force=True)
 
 MUJOCO_TASKS = [
   "halfcheetah-random-v2",
@@ -78,7 +78,7 @@ def train():
     Main function to train the algorithm.
     """
 
-    algorithms = ["msg", "cql", "sac_n"]
+    algorithms = ["msg"] #, "cql", "sac_n"]
 
     # Do locomotion
     datasets = MUJOCO_TASKS
@@ -134,7 +134,7 @@ def train():
                     "nice", "-n", "19",
                     "python3", f"algorithms/{algorithm}.py",
                     "--log",
-                    "--eval-workers", "100",
+                    "--eval-workers", "16",
                     "--dataset", dataset,
                     "--num_updates", str(learning_steps),
                     "--wandb_team", wandb_team,
@@ -147,11 +147,22 @@ def train():
                     command.extend([f"--{key}", f"{value:.4f}"])
 
                 print("Running:", command)
-                try:
-                    subprocess.run(command, check=True, env=algo_env)
-                except:
-                    print("Failed"!)
+                    
 
+                proc = subprocess.Popen(command, env=algo_env, start_new_session=True)
+                try:
+                    proc.wait()
+                    if proc.returncode != 0:
+                        print(f"Subprocess failed with code {proc.returncode}")
+                except Exception as e:
+                    print(f"Subprocess crashed: {e}")
+                finally:
+                    # Clean up the whole process group
+                    try:
+                        os.killpg(proc.pid, signal.SIGTERM)
+                    except ProcessLookupError:
+                        # Process group already exited
+                        pass
 
 
 if __name__ == "__main__":
