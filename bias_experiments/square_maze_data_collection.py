@@ -65,7 +65,3 @@ if __name__ == "__main__":
     for H in [10, 20, 50]:
         print(f"Collecting dataset for H={H}...")
         collect_dataset(H=H, episodes=5000, seed=42)
-
-    env = load_dataset("square-reach/horizon-10-v0")
-    print(env)
-    print(env.recover_environment())
