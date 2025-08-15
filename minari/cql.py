@@ -10,8 +10,7 @@ import d4rl
 import flax.linen as nn
 from flax.linen.initializers import constant, uniform
 from flax.training.train_state import TrainState
-import gym
-import gymnasium
+import gymnasium as gym
 import jax
 import jax.numpy as jnp
 import minari
