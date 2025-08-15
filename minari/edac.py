@@ -25,6 +25,7 @@ os.environ["XLA_FLAGS"] = "--xla_gpu_triton_gemm_any=True"
 class Args:
     # --- Experiment ---
     seed: int = 0
+    save_state: bool = False
     dataset: str = "halfcheetah-medium-v2"
     algorithm: str = "edac"
     num_updates: int = 3_000_000
@@ -76,7 +77,7 @@ def load_minari_dataset(name):
     terminals = []
 
     minari_dataset = minari.load_dataset(name, download=True)
-    eval_env = minari_dataset.recover_environment()
+    eval_env = minari_dataset.recover_environment(eval_env=True)
 
     for episode in minari_dataset.iterate_episodes():
         observations.extend(episode.observations)
@@ -169,40 +170,41 @@ def create_train_state(args, rng, network, dummy_input):
 def eval_agent(args, rng, env, agent_state):
     # --- Reset environment ---
     step = 0
-    returned = onp.zeros(args.eval_workers).astype(bool)
-    cum_reward = onp.zeros(args.eval_workers)
-    rng, rng_reset = jax.random.split(rng)
-    rng_reset = jax.random.split(rng_reset, args.eval_workers)
+    cum_reward = jnp.zeros(args.eval_workers)
+    # returned = onp.zeros(args.eval_workers).astype(bool)
+    # cum_reward = onp.zeros(args.eval_workers)
+    # rng, rng_reset = jax.random.split(rng)
+    # rng_reset = jax.random.split(rng_reset, args.eval_workers)
 
-    def _rng_to_integer_seed(rng):
-        return int(jax.random.randint(rng, (), 0, jnp.iinfo(jnp.int32).max))
+    # def _rng_to_integer_seed(rng):
+        # return int(jax.random.randint(rng, (), 0, jnp.iinfo(jnp.int32).max))
 
-    seeds_reset = [_rng_to_integer_seed(rng) for rng in rng_reset]
-    obs = env.reset(seed=seeds_reset)
+    #seeds_reset = [_rng_to_integer_seed(rng) for rng in rng_reset]
+
+    # unused seed!
+    obs, _ = env.reset()
 
     # --- Rollout agent ---
     @jax.jit
-    @jax.vmap
+
     def _policy_step(rng, obs):
         pi = agent_state.actor.apply_fn(agent_state.actor.params, obs)
         action = pi.sample(seed=rng)
         return jnp.nan_to_num(action)
 
-    max_episode_steps = env.env_fns[0]().spec.max_episode_steps
-    while step < max_episode_steps and not returned.all():
+    done = False
+    while not done:
         # --- Take step in environment ---
         step += 1
         rng, rng_step = jax.random.split(rng)
         rng_step = jax.random.split(rng_step, args.eval_workers)
         action = _policy_step(rng_step, jnp.array(obs))
-        obs, reward, done, info = env.step(onp.array(action))
+        obs, reward, terminated, truncated, info = env.step(onp.array(action))
 
         # --- Track cumulative reward ---
-        cum_reward += reward * ~returned
-        returned |= done
+        done = terminated | truncated
+        cum_reward += reward * ~terminated
 
-    if step >= max_episode_steps and not returned.all():
-        warnings.warn("Maximum steps reached before all episodes terminated")
     return cum_reward
 
 
@@ -425,31 +427,20 @@ def train_edac(args):
 
     # --- Initialize environment and dataset ---
 
-    if args.dataset_source == "d4rl":
-        env = gym.vector.make(args.dataset_name, num_envs=args.eval_workers)
-        dataset = d4rl.qlearning_dataset(gym.make(args.dataset_name))
-        dataset = Transition(
-            obs=jnp.array(dataset["observations"]),
-            action=jnp.array(dataset["actions"]),
-            reward=jnp.array(dataset["rewards"]),
-            next_obs=jnp.array(dataset["next_observations"]),
-            done=jnp.array(dataset["terminals"]),
-        )
+    dataset, env = load_minari_dataset(args.dataset)
 
-    elif args.dataset_source == "minari":
-        dataset, eval_env = load_minari_dataset(args.dataset_name)
-        env = gym.vector.make(eval_env.spec.id, num_envs=args.eval_workers)
-        dataset = Transition(
-            obs=jnp.array(dataset["observations"]),
-            action=jnp.array(dataset["actions"]),
-            reward=jnp.array(dataset["rewards"]),
-            next_obs=jnp.array(dataset["next_observations"]),
-            done=jnp.array(dataset["terminals"]),
-        )
+    dataset = Transition(
+        obs=jnp.array(dataset["observations"]),
+        action=jnp.array(dataset["actions"]),
+        reward=jnp.array(dataset["rewards"]),
+        next_obs=jnp.array(dataset["next_observations"]),
+        done=jnp.array(dataset["terminals"]),
+    )
+
 
     # --- Initialize agent and value networks ---
-    num_actions = env.single_action_space.shape[0]
-    dummy_obs = jnp.zeros(env.single_observation_space.shape)
+    num_actions = env.action_space.shape[0]
+    dummy_obs = jnp.zeros(env.observation_space.shape)
     dummy_action = jnp.zeros(num_actions)
     actor_net = TanhGaussianActor(num_actions)
     q_net = VectorQ(args.num_critics)
@@ -457,8 +448,9 @@ def train_edac(args):
 
     # Target networks share seeds to match initialization
     rng, rng_actor, rng_q, rng_alpha = jax.random.split(rng, 4)
+    actor_lr = args.actor_lr if args.actor_lr is not None else args.lr
     agent_state = AgentTrainState(
-        actor=create_train_state(args, rng_actor, actor_net, [dummy_obs]),
+        actor=create_train_state(args, rng_actor, actor_net, [dummy_obs], actor_lr),
         vec_q=create_train_state(args, rng_q, q_net, [dummy_obs, dummy_action]),
         vec_q_target=create_train_state(args, rng_q, q_net, [dummy_obs, dummy_action]),
         alpha=create_train_state(args, rng_alpha, alpha_net, []),
@@ -471,7 +463,6 @@ def train_edac(args):
 
     num_evals = args.num_updates // args.eval_interval
     for eval_idx in range(num_evals):
-
         # --- Execute train loop ---
         (rng, agent_state), loss = jax.lax.scan(
             _agent_train_step_fn,
@@ -505,14 +496,18 @@ def train_edac(args):
         _rng = jax.random.split(rng, final_iters)
         rets = onp.concatenate([eval_agent(args, _rng, env, agent_state) for _rng in _rng])
         env.close()
-        scores = d4rl.get_normalized_score(args.dataset, rets) * 100.0
+
+        # need to fix this placeholder
+        # scores = d4rl.get_normalized_score(args.dataset, returns) * 100.0
+        scores = jnp.zeros(2)
+
         agg_fn = lambda x, k: {k: x, f"{k}_mean": x.mean(), f"{k}_std": x.std()}
         info = agg_fn(rets, "final_returns") | agg_fn(scores, "final_scores")
 
         # --- Write final returns to file ---
         os.makedirs("final_returns", exist_ok=True)
         time_str = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-        filename = f"{args.algorithm}_{args.dataset}_{time_str}.npz"
+        filename = f"{args.algorithm}_{(args.dataset).replace('/', '.')}_{time_str}.npz"
         with open(os.path.join("final_returns", filename), "wb") as f:
             onp.savez_compressed(f, **info, args=asdict(args))
 
@@ -521,6 +516,21 @@ def train_edac(args):
 
     if args.log:
         wandb.finish()
+
+    if args.save_state:
+        # Save agent state
+        os.makedirs("agent_states", exist_ok=True)
+        time_str = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        filename = f"{args.algorithm}_{args.dataset}_{time_str}.npz"
+        with open(os.path.join("agent_states", filename), "wb") as f:
+            onp.savez_compressed(
+                f,
+                actor=agent_state.actor.params,
+                vec_q=agent_state.vec_q.params,
+                vec_q_target=agent_state.vec_q_target.params,
+                alpha=agent_state.alpha.params,
+                args=asdict(args),
+            )
 
 
 
