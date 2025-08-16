@@ -2,7 +2,7 @@ import gymnasium as gym
 from gymnasium import spaces
 from minari import DataCollector, load_dataset
 
-import square_reach
+import mock_environments
 import matplotlib.pyplot as plt
 import numpy as np
 
