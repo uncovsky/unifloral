@@ -9,6 +9,7 @@ import distrax
 import d4rl
 import flax.linen as nn
 from flax.linen.initializers import constant, uniform
+from flax.training import checkpoints
 from flax.training.train_state import TrainState
 import gymnasium as gym
 import jax
@@ -26,7 +27,6 @@ os.environ["XLA_FLAGS"] = "--xla_gpu_triton_gemm_any=True"
 class Args:
     # --- Experiment ---
     seed: int = 0
-    save_state: bool = False
     dataset: str = "halfcheetah-medium-v2"
     algorithm: str = "msg"
     num_updates: int = 1_000_000
@@ -488,6 +488,23 @@ def train_msg(args):
         args, actor_net.apply, q_net.apply, alpha_net.apply, dataset
     )
 
+    def create_checkpoint_dir():
+        # Create timestamped directory
+        time_str = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        dir_name = f"{args.algorithm}_{args.dataset.replace('/', '.')}_{time_str}"
+        ckpt_dir = os.path.join("./checkpoints", dir_name)
+        ckpt_dir = os.path.abspath(ckpt_dir)
+        os.makedirs(ckpt_dir, exist_ok=True)
+        return ckpt_dir
+
+
+    def save_train_state(train_state, ckpt_dir, step):
+        checkpoints.save_checkpoint(ckpt_dir, target=train_state, step=step, overwrite=True)
+        print(f"Checkpoint saved at step {step} in {ckpt_dir}")
+
+    ckpt_dir = create_checkpoint_dir()
+    save_train_state(agent_state, ckpt_dir, 0)
+
     num_evals = args.num_updates // args.eval_interval
     for eval_idx in range(num_evals):
         # --- Execute train loop ---
@@ -501,7 +518,8 @@ def train_msg(args):
         # --- Evaluate agent ---
         rng, rng_eval = jax.random.split(rng)
         returns = eval_agent(args, rng_eval, env, agent_state)
-        scores = d4rl.get_normalized_score(args.dataset, returns) * 100.0
+        # scores = d4rl.get_normalized_score(args.dataset, returns) * 100.0
+        scores = jnp.zeros(2)
 
         # --- Log metrics ---
         step = (eval_idx + 1) * args.eval_interval
@@ -515,6 +533,11 @@ def train_msg(args):
                 **{k: loss[k][-1] for k in loss},
             }
             wandb.log(log_dict)
+
+        if eval_idx == num_evals // 2:
+            save_train_state(agent_state, ckpt_dir, eval_idx)
+
+    save_train_state(agent_state, ckpt_dir, num_evals)
 
     # --- Evaluate final agent ---
     if args.eval_final_episodes > 0:
@@ -543,22 +566,6 @@ def train_msg(args):
 
     if args.log:
         wandb.finish()
-
-    if args.save_state:
-        # Save agent state
-        os.makedirs("agent_states", exist_ok=True)
-        time_str = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-        filename = f"{args.algorithm}_{args.dataset}_{time_str}.npz"
-        with open(os.path.join("agent_states", filename), "wb") as f:
-            onp.savez_compressed(
-                f,
-                actor=agent_state.actor.params,
-                vec_q=agent_state.vec_q.params,
-                vec_q_target=agent_state.vec_q_target.params,
-                alpha=agent_state.alpha.params,
-                args=asdict(args),
-            )
-
 
 if __name__ == "__main__":
     # --- Parse arguments ---
