@@ -4,7 +4,6 @@ from datetime import datetime
 from functools import partial
 import os
 import warnings
-
 import distrax
 import d4rl
 import flax.linen as nn
@@ -14,6 +13,7 @@ import gymnasium as gym
 import jax
 import jax.numpy as jnp
 import minari
+import mock_environments
 import numpy as onp
 import optax
 import tyro
