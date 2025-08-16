@@ -30,5 +30,9 @@ ENV MUJOCO_GL=osmesa
 # Set working directory
 WORKDIR /work/rl
 
+COPY . /work/rl
+
+RUN pip install --no-cache-dir -e .
+
 # Default command
 CMD ["python"]
