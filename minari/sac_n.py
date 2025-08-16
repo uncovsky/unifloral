@@ -165,38 +165,44 @@ def create_train_state(args, rng, network, dummy_input):
     )
 
 
+
 def eval_agent(args, rng, env, agent_state):
     # --- Reset environment ---
     step = 0
-    returned = onp.zeros(args.eval_workers).astype(bool)
-    cum_reward = onp.zeros(args.eval_workers)
-    rng, rng_reset = jax.random.split(rng)
-    rng_reset = jax.random.split(rng_reset, args.eval_workers)
-    obs = env.reset()
+    cum_reward = jnp.zeros(args.eval_workers)
+    # returned = onp.zeros(args.eval_workers).astype(bool)
+    # cum_reward = onp.zeros(args.eval_workers)
+    # rng, rng_reset = jax.random.split(rng)
+    # rng_reset = jax.random.split(rng_reset, args.eval_workers)
+
+    # def _rng_to_integer_seed(rng):
+        # return int(jax.random.randint(rng, (), 0, jnp.iinfo(jnp.int32).max))
+
+    #seeds_reset = [_rng_to_integer_seed(rng) for rng in rng_reset]
+
+    # unused seed!
+    obs, _ = env.reset()
 
     # --- Rollout agent ---
     @jax.jit
-    @jax.vmap
     def _policy_step(rng, obs):
         pi = agent_state.actor.apply_fn(agent_state.actor.params, obs)
         action = pi.sample(seed=rng)
         return jnp.nan_to_num(action)
 
-    max_episode_steps = env.env_fns[0]().spec.max_episode_steps
-    while step < max_episode_steps and not returned.all():
+    done = False
+    while not done:
         # --- Take step in environment ---
         step += 1
         rng, rng_step = jax.random.split(rng)
         rng_step = jax.random.split(rng_step, args.eval_workers)
         action = _policy_step(rng_step, jnp.array(obs))
-        obs, reward, done, info = env.step(onp.array(action))
+        obs, reward, terminated, truncated, info = env.step(onp.array(action))
 
         # --- Track cumulative reward ---
-        cum_reward += reward * ~returned
-        returned |= done
+        done = terminated | truncated
+        cum_reward += reward * ~terminated
 
-    if step >= max_episode_steps and not returned.all():
-        warnings.warn("Maximum steps reached before all episodes terminated")
     return cum_reward
 
 
@@ -359,9 +365,8 @@ def train_sac_n(args):
 
     # Target networks share seeds to match initialization
     rng, rng_actor, rng_q, rng_alpha = jax.random.split(rng, 4)
-    actor_lr = args.actor_lr if args.actor_lr is not None else args.lr
     agent_state = AgentTrainState(
-        actor=create_train_state(args, rng_actor, actor_net, [dummy_obs], actor_lr),
+        actor=create_train_state(args, rng_actor, actor_net, [dummy_obs]),
         vec_q=create_train_state(args, rng_q, q_net, [dummy_obs, dummy_action]),
         vec_q_target=create_train_state(args, rng_q, q_net, [dummy_obs, dummy_action]),
         alpha=create_train_state(args, rng_alpha, alpha_net, []),

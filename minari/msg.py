@@ -476,9 +476,8 @@ def train_msg(args):
 
     # Target networks share seeds to match initialization
     rng, rng_actor, rng_q, rng_alpha = jax.random.split(rng, 4)
-    actor_lr = args.actor_lr if args.actor_lr is not None else args.lr
     agent_state = AgentTrainState(
-        actor=create_train_state(args, rng_actor, actor_net, [dummy_obs], actor_lr),
+        actor=create_train_state(args, rng_actor, actor_net, [dummy_obs]),
         vec_q=create_train_state(args, rng_q, q_net, [dummy_obs, dummy_action]),
         vec_q_target=create_train_state(args, rng_q, q_net, [dummy_obs, dummy_action]),
         alpha=create_train_state(args, rng_alpha, alpha_net, []),
