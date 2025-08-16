@@ -4,7 +4,6 @@ from gymnasium.envs.registration import register
 import matplotlib.pyplot as plt
 import numpy as np
 
-
 class SquareReachEnv(gym.Env):
 
     """
@@ -119,13 +118,4 @@ class SquareReachEnv(gym.Env):
         plt.savefig(f"square_horizon={self.H}_trajs.png")
 
 
-
-# ==========================
-# Register the environment
-# ==========================
-register(
-    id="SquareReachEnv-v0",
-    entry_point="square_reach:SquareReachEnv",
-    max_episode_steps=1000,  # default, can be overridden
-)
 

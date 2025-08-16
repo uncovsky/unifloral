@@ -2,10 +2,9 @@ import gymnasium as gym
 from gymnasium import spaces
 from minari import DataCollector, load_dataset
 
+import square_reach
 import matplotlib.pyplot as plt
 import numpy as np
-
-from square_reach import SquareReachEnv
 
 def collect_dataset(H, episodes=1000, seed=0):
 
