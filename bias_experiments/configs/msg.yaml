@@ -13,7 +13,8 @@ parameters:
   seed:
     values: [0, 1]
   dataset:
-    values: [square-reach/horizon-10-v0, square-reach/horizon-20-v0, square-reach/horizon-50-v0]
+    values: [square-reach/horizon-10-v0, square-reach/horizon-20-v0, square-reach/horizon-50-v0,
+             pendulum/gaussian-v0, pendulum/uniform-v0, pendulum/mixture-v0]
   algorithm:
     value: msg
   num_updates:
@@ -41,7 +42,7 @@ parameters:
   batch_size:
     value: 256
   gamma:
-    value: 0.99
+    value: 0.999
   polyak_step_size:
     value: 0.005
 
