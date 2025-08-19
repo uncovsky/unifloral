@@ -58,9 +58,3 @@ def collect_dataset(H, episodes=1000, seed=0):
     )
 
     env.close()
-
-
-if __name__ == "__main__":
-    for H in [10, 20, 50]:
-        print(f"Collecting dataset for H={H}...")
-        collect_dataset(H=H, episodes=5000, seed=42)

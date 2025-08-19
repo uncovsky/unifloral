@@ -1,13 +1,23 @@
 import gymnasium as gym
 from minari import DataCollector
 
-from pendulum_data_collection import collect_uniform_dataset, collect_agent_dataset, visualize_policy_histogram
-from pendulum_data_collection import gaussian_mixture_policy, uniform_mixture_policy, uniform_policy
+from data_collection.pendulum_data_collection import collect_uniform_dataset, collect_agent_dataset, visualize_policy_histogram
+from data_collection.pendulum_data_collection import gaussian_mixture_policy, uniform_mixture_policy, uniform_policy
+from data_collection.square_maze_data_collection import collect_dataset
 
 
 if __name__ == "__main__":
-    print("Collecting data for Pendulum-v1...")
 
+    print("Collecting data for Square Maze...")
+    horizons = [10, 20, 50]
+    dataset_episodes = 500
+    square_maze_seed = 42
+
+    for H in horizons:
+        print(f"Collecting dataset for horizon = {H}...")
+        collect_dataset(H=H, episodes=dataset_episodes, seed=square_maze_seed)
+
+    print("Collecting data for Pendulum-v1...")
     env = gym.make("Pendulum-v1")
 
     dataset_names = {
@@ -15,6 +25,9 @@ if __name__ == "__main__":
         "uniform_mixture_policy": "mixture-v0",
         "uniform_policy": "uniform-v0",
     }
+
+    pendulum_seed = 42
+
 
     for policy in [
         gaussian_mixture_policy,
@@ -27,7 +40,7 @@ if __name__ == "__main__":
 
         collect_uniform_dataset(
             env, policy, dataset_size=100000,
-            dataset_name=dataset_names[policy.__name__], seed=42
+            dataset_name=dataset_names[policy.__name__], seed=pendulum_seed
         )
 
 
@@ -40,6 +53,5 @@ if __name__ == "__main__":
     collect_agent(collecting_env, agent, dataset_size=100000,
     dataset_name="ppo-expert-v1", seed=42)
     """
-
 
 
