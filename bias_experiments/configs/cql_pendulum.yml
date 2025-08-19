@@ -4,18 +4,18 @@ command:
   - ${args_no_boolean_flags}
 entity: ahoj
 method: grid
-name: MSG
-program: minari/msg.py
-project: square-msg
+name: CQL
+program: minari/cql.py
+project: cql
 
 parameters:
   # --- Experiment ---
   seed:
     values: [0, 1]
   dataset:
-    values: [square-reach/horizon-10-v0, square-reach/horizon-20-v0, square-reach/horizon-50-v0]
+    values: [pendulum/gaussian-v0, pendulum/uniform-v0, pendulum/mixture-v0]
   algorithm:
-    value: msg
+    value: cql
   num_updates:
     values: [50_000, 100_000]
   eval_interval:
@@ -29,7 +29,7 @@ parameters:
   log:
     value: true
   wandb_project:
-    value: square-msg
+    value: square-cql
   wandb_team:
     value: ahoj
   wandb_group:
@@ -37,20 +37,22 @@ parameters:
 
   # --- Generic optimization ---
   lr:
-    value: [3e-4]
+    value: 3e-4 
   batch_size:
     value: 256
   gamma:
-    value: 0.999
+    value: 0.99
   polyak_step_size:
     value: 0.005
 
   # --- SAC-N ---
   num_critics:
-    value: [10, 30]
+    value: 2
 
-  # --- MSG ---
-  cql_min_q_weight: 
-    values : [0.0, 0.1, 0.3]
-  actor_lcb_coef : 
-    values : [2.0, 4.0, 8.0]
+  # --- CQL ---
+  actor_lr:
+    value: 3e-4
+  cql_temperature:
+    value: 1.0
+  cql_min_q_weight:
+    values: [5.0, 10.0, 20.0]

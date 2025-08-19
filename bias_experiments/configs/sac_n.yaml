@@ -13,8 +13,7 @@ parameters:
   seed:
     values: [0, 1]
   dataset:
-    values: [square-reach/horizon-10-v0, square-reach/horizon-20-v0, square-reach/horizon-50-v0,
-             pendulum/gaussian-v0, pendulum/uniform-v0, pendulum/mixture-v0]
+    values: [square-reach/horizon-10-v0, square-reach/horizon-20-v0, square-reach/horizon-50-v0]
   algorithm:
     value: sac_n
   num_updates:
@@ -48,4 +47,4 @@ parameters:
 
   # --- SAC-N ---
   num_critics:
-    values: [5, 10, 20, 50, 100, 200]  # 500 and 1000 have high GPU memory usage
+    values: [10, 30]  # 500 and 1000 have high GPU memory usage
