@@ -8,11 +8,9 @@ import os
 from datetime import datetime
 from minari import DataCollector
 import random
-from stable_baselines3 import PPO
-from rl_zoo3.train import train
 
 
-def gaussian_mixture_policy_acro(_):
+def gaussian_mixture_policy(_):
 
     """
         GMM for Pendulum, other envs need to adjust clipping and dimensionality!
@@ -30,7 +28,7 @@ def gaussian_mixture_policy_acro(_):
     act = np.clip(act, -2, 2)  # Clip to action space limits
     return np.array([act], dtype=np.float32)
 
-def uniform_mixture_policy_acro(_):
+def uniform_mixture_policy(_):
     """
         Mixture of two uniform distributions [-2, -1] and [1, 2]
     """
@@ -42,27 +40,26 @@ def uniform_mixture_policy_acro(_):
     return np.array([res], dtype=np.float32)
 
 
-def uniform_policy_acro(_):
+def uniform_policy(_):
     # just sample uniformly, turn to array
     res = np.random.uniform(low=-2, high=2)
     return np.array([res], dtype=np.float32)  
 
 
-def collect_expert_dataset(env, model_path, dataset_size, seed=42):
+def collect_agent_dataset(env, agent, dataset_size, dataset_name, seed=42):
 
     """
-        Collects a minari dataset on `env` using `expert_policy` in
-        initial state, and random actions thereafter.
+        Collects a minari dataset on `env` using `agent` across the entire
+        interaction.
     """
 
-    agent = PPO.load(model_path)
+    # wrap env in DataCollector to collect data
+    env = DataCollector(env)
 
     step = 0
 
     obs, _ = env.reset(seed=seed)
     env.action_space.seed(seed)
-
-
 
     obs, _ = env.reset()
 
@@ -76,24 +73,28 @@ def collect_expert_dataset(env, model_path, dataset_size, seed=42):
 
     now = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 
-    dataset_id = f"pendulum/ppo-expert-v1"
-    algorithm_name = "Expert"
+    dataset_id = f"pendulum/{dataset_name}"
+    algorithm_name = "expert agent"
     author = "uncovsky"
 
     env.create_dataset(
         dataset_id=dataset_id,
         algorithm_name=algorithm_name,
         author=author,
-        description=f"Collected by trained PPO agent on Pendulum-v1, seed {seed}.",
+        description=f"Collected by trained agent on Pendulum-v1, seed {seed}.",
     )
 
+    print("Created dataset with ID:", dataset_id)
 
-def collect_uniform_dataset(env, first_state_policy, dataset_size, seed=42):
+
+def collect_uniform_dataset(env, first_state_policy, dataset_size,
+                            dataset_name, seed=42):
 
     """
         Collects a minari dataset on `env` using `first_state_policy` in
         initial state, and random actions thereafter.
     """
+    env = DataCollector(env)
 
     step = 0
     obs, _ = env.reset(seed=seed)
@@ -113,8 +114,7 @@ def collect_uniform_dataset(env, first_state_policy, dataset_size, seed=42):
 
     now = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 
-    dataset_id = f"pendulum/gauss-mixed-v2"
-    print(dataset_id)
+    dataset_id = f"pendulum/{dataset_name}"
     algorithm_name = "Uniform"
     author = "uncovsky"
 
@@ -124,6 +124,8 @@ def collect_uniform_dataset(env, first_state_policy, dataset_size, seed=42):
         author=author,
         description=f"Uniformly collected dataset on Pendulum-v1, seed {seed}.",
     )
+    
+    print("Created dataset with ID:", dataset_id)
 
 
 
@@ -138,39 +140,5 @@ def visualize_policy_histogram(policy, env, num_samples=10000):
     plt.ylabel("Density")
     plt.grid()
     plt.show()
-
-
-
-
-
-
-if __name__ == "__main__":
-    env = gym.make("Pendulum-v1")
-    collecting_env = DataCollector(gym.make("Pendulum-v1"))
-
-
-    """
-    collect_uniform_dataset(
-        collecting_env, gaussian_mixture_policy_acro, dataset_size=100000, seed=42
-    )
-
-    # Train agent
-    sys.argv = ["python", "--algo", "ppo", "--env", "Pendulum-v1", "--n-timesteps", "1000000", "--seed", "42"]
-    train()
-
-
-    visualize_policy_histogram(gaussian_mixture_policy_acro, env, num_samples=10000)
-    visualize_policy_histogram(uniform_mixture_policy_acro, env,
-                               num_samples=10000)
-    visualize_policy_histogram(uniform_policy_acro, env, num_samples=10000)
-
-
-
-    """
-
-    path = os.path.abspath('') + '/logs/ppo/Pendulum-v1_1/best_model'
-    collect_expert_dataset(collecting_env, path, dataset_size=100000, seed=42)
-
-
 
 
