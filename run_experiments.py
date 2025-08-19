@@ -83,9 +83,7 @@ def run_bias_experiments(config_dir, run_limit=None):
     loaded_configs = load_configs(config_dir)
 
     for config in loaded_configs:
-        print(f"Running sweep for config: {config} with run limit: {run_limit}")
         run_sweep(config, run_limit)
-        print(f"Completed sweep for config: {config}")
 
 
 def run_antmaze_experiments(config_dir, run_limit=None):
@@ -105,9 +103,7 @@ def run_antmaze_experiments(config_dir, run_limit=None):
                 "value": env_name
             }
 
-            print(f"Running sweep for env: {env_name} with run limit: {run_limit}")
             run_sweep(config, run_limit)
-            print(f"Completed sweep for config: {config}")
 
 
 def run_mujoco_experiments(config_dir, run_limit=None):
@@ -127,9 +123,7 @@ def run_mujoco_experiments(config_dir, run_limit=None):
                 "value": env_name
             }
 
-            print(f"Running sweep for env: {env_name} with run limit: {run_limit}")
             run_sweep(config, run_limit)
-            print(f"Completed sweep for config: {config}")
 
 if __name__ == "__main__":
     arg_parser = argparse.ArgumentParser(description="Run bias experiments with specified configurations.")
