@@ -31,7 +31,7 @@ parameters:
   log:
     value: true
   wandb_project:
-    value: square-msg
+    value: pendulum-msg
   wandb_team:
     value: ahoj
   wandb_group:
@@ -39,7 +39,7 @@ parameters:
 
   # --- Generic optimization ---
   lr:
-    value: [3e-4]
+    value: 3e-4
   batch_size:
     value: 256
   gamma:
@@ -49,7 +49,7 @@ parameters:
 
   # --- SAC-N ---
   num_critics:
-    value: [10, 30]
+    values: [10, 30]
 
   # --- MSG ---
   cql_min_q_weight: 

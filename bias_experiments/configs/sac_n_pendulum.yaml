@@ -29,7 +29,7 @@ parameters:
   log:
     value: true
   wandb_project:
-    value: square-sac-n
+    value: pendulum-sac-n
   wandb_team:
     value: ahoj
   wandb_group:
