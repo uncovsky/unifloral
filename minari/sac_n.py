@@ -385,7 +385,7 @@ def train_sac_n(args):
         dir_name = f"{args.algorithm}_{args.dataset.replace('/', '.')}/{time_str}"
         ckpt_dir = os.path.join("./checkpoints", dir_name)
         ckpt_dir = os.path.abspath(ckpt_dir)
-        os.makedirs(ckpt_dir, exist_ok=True, parents=True)
+        os.makedirs(ckpt_dir, exist_ok=True)
         return ckpt_dir
 
     def save_train_state(train_state, ckpt_dir, step):
