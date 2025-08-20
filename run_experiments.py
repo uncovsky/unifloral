@@ -63,6 +63,7 @@ def load_configs(config_dir):
     configs = []
     for config_file in config_files:
         config_path = os.path.join(config_dir, config_file)
+        print(config_path)
         with open(config_path, "r") as f:
             try:
                 sweep_cfg = yaml.safe_load(f)

@@ -7,7 +7,7 @@ entity: ahoj
 method: grid
 name: MSG
 program: minari/msg.py
-project: square-msg
+project: pendulum-msg
 
 parameters:
   # --- Experiment ---

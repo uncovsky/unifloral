@@ -6,7 +6,7 @@ entity: ahoj
 method: grid
 name: SAC-N
 program: minari/sac_n.py
-project: square-sac-n
+project: pendulum-sac-n
 
 parameters:
   # --- Experiment ---

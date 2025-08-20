@@ -6,7 +6,7 @@ entity: ahoj
 method: grid
 name: CQL
 program: minari/cql.py
-project: cql
+project: square-cql
 
 parameters:
   # --- Experiment ---
