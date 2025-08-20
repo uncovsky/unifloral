@@ -1,0 +1,50 @@
+command:
+  - python3
+  - ${program}
+  - ${args_no_boolean_flags}
+entity: ahoj
+method: grid
+name: SAC-N
+program: minari/sac_n.py
+project: square-sac-n
+
+parameters:
+  # --- Experiment ---
+  seed:
+    values: [0, 1]
+  dataset:
+    values: [square-reach/horizon-10-v0, square-reach/horizon-20-v0, square-reach/horizon-50-v0]
+  algorithm:
+    value: sac_n
+  num_updates:
+    values: [200_000, 500_000]
+  eval_interval:
+    value: 2500
+  eval_workers:
+    value: 1
+  eval_final_episodes:
+    value: 0
+
+  # --- Logging ---
+  log:
+    value: true
+  wandb_project:
+    value: square-sac-n
+  wandb_team:
+    value: ahoj
+  wandb_group:
+    value: debug
+
+  # --- Generic optimization ---
+  lr:
+    value: 0.0003
+  batch_size:
+    value: 256
+  gamma:
+    value: 0.999
+  polyak_step_size:
+    value: 0.005
+
+  # --- SAC-N ---
+  num_critics:
+    values: [10, 30]  # 500 and 1000 have high GPU memory usage

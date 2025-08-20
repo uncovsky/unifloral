@@ -1,5 +1,3 @@
-# test bias of methods on the pendulum benchmark
-
 from collections import namedtuple
 from dataclasses import dataclass, asdict
 from datetime import datetime
@@ -11,16 +9,14 @@ import distrax
 import d4rl
 import flax.linen as nn
 from flax.linen.initializers import constant, uniform
-from flax.training.train_state import TrainState
 from flax.training import checkpoints
-
-import gym
+from flax.training.train_state import TrainState
+import gymnasium as gym
 import jax
 import jax.numpy as jnp
 import minari
 import numpy as onp
 import optax
-import tqdm
 import tyro
 import wandb
 
@@ -32,8 +28,8 @@ class Args:
     # --- Experiment ---
     seed: int = 0
     dataset: str = "halfcheetah-medium-v2"
-    algorithm: str = "cql"
-    num_updates: int = 1_000_000
+    algorithm: str = "edac"
+    num_updates: int = 3_000_000
     eval_interval: int = 2500
     eval_workers: int = 8
     eval_final_episodes: int = 1000
@@ -49,10 +45,8 @@ class Args:
     polyak_step_size: float = 0.005
     # --- SAC-N ---
     num_critics: int = 10
-    # --- CQL---
-    actor_lr: float = 3e-5
-    cql_temperature: float = 1.0
-    cql_min_q_weight: float = 10.0
+    # --- EDAC ---
+    eta: float = 1.0
 
 
 r"""
@@ -74,6 +68,34 @@ def sym(scale):
         return uniform(2 * scale)(*args, **kwargs) - scale
 
     return _init
+
+
+def load_minari_dataset(name):
+    observations = []
+    actions = []
+    rewards = []
+    next_observations = []
+    terminals = []
+
+    minari_dataset = minari.load_dataset(name, download=True)
+    eval_env = minari_dataset.recover_environment(eval_env=True)
+
+    for episode in minari_dataset.iterate_episodes():
+        observations.extend(episode.observations)
+        actions.extend(episode.actions)
+        rewards.extend(episode.rewards)
+        next_observations.extend(episode.observations[1:])
+        terminals.extend(episode.terminations)
+
+    dataset = {
+        "observations": observations,
+        "actions": actions,
+        "rewards": rewards,
+        "next_observations": next_observations,
+        "terminals": terminals,
+    }
+
+    return dataset, eval_env
 
 
 class SoftQNetwork(nn.Module):
@@ -138,51 +160,52 @@ class EntropyCoef(nn.Module):
         return log_ent_coef
 
 
-def create_train_state(args, rng, network, dummy_input, lr=None):
+def create_train_state(args, rng, network, dummy_input):
     return TrainState.create(
         apply_fn=network.apply,
         params=network.init(rng, *dummy_input),
-        tx=optax.adam(lr if lr is not None else args.lr, eps=1e-5),
+        tx=optax.adam(args.lr, eps=1e-5),
     )
 
 
 def eval_agent(args, rng, env, agent_state):
     # --- Reset environment ---
     step = 0
-    returned = onp.zeros(args.eval_workers).astype(bool)
-    cum_reward = onp.zeros(args.eval_workers)
-    rng, rng_reset = jax.random.split(rng)
-    rng_reset = jax.random.split(rng_reset, args.eval_workers)
+    cum_reward = jnp.zeros(args.eval_workers)
+    # returned = onp.zeros(args.eval_workers).astype(bool)
+    # cum_reward = onp.zeros(args.eval_workers)
+    # rng, rng_reset = jax.random.split(rng)
+    # rng_reset = jax.random.split(rng_reset, args.eval_workers)
 
-    def _rng_to_integer_seed(rng):
-        return int(jax.random.randint(rng, (), 0, jnp.iinfo(jnp.int32).max))
+    # def _rng_to_integer_seed(rng):
+        # return int(jax.random.randint(rng, (), 0, jnp.iinfo(jnp.int32).max))
 
-    seeds_reset = [_rng_to_integer_seed(rng) for rng in rng_reset]
-    obs = env.reset(seed=seeds_reset)
+    #seeds_reset = [_rng_to_integer_seed(rng) for rng in rng_reset]
+
+    # unused seed!
+    obs, _ = env.reset()
 
     # --- Rollout agent ---
     @jax.jit
-    @jax.vmap
+
     def _policy_step(rng, obs):
         pi = agent_state.actor.apply_fn(agent_state.actor.params, obs)
         action = pi.sample(seed=rng)
         return jnp.nan_to_num(action)
 
-    max_episode_steps = env.env_fns[0]().spec.max_episode_steps
-    while step < max_episode_steps and not returned.all():
+    done = False
+    while not done:
         # --- Take step in environment ---
         step += 1
         rng, rng_step = jax.random.split(rng)
         rng_step = jax.random.split(rng_step, args.eval_workers)
         action = _policy_step(rng_step, jnp.array(obs))
-        obs, reward, done, info = env.step(onp.array(action))
+        obs, reward, terminated, truncated, info = env.step(onp.array(action))
 
         # --- Track cumulative reward ---
-        cum_reward += reward * ~returned
-        returned |= done
+        done = terminated | truncated
+        cum_reward += reward * ~terminated
 
-    if step >= max_episode_steps and not returned.all():
-        warnings.warn("Maximum steps reached before all episodes terminated")
     return cum_reward
 
 
@@ -233,6 +256,8 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset):
         agent_state = agent_state._replace(alpha=updated_alpha)
         alpha = jnp.exp(alpha_apply_fn(agent_state.alpha.params))
 
+        
+
         # --- Update actor ---
         @partial(jax.value_and_grad, has_aux=True)
         def _actor_loss_function(params, rng):
@@ -249,6 +274,7 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset):
             rng = jax.random.split(rng, args.batch_size)
             loss, entropy, q_min, q_std = jax.vmap(_compute_loss)(rng, batch)
             return loss.mean(), (entropy.mean(), q_min.mean(), q_std.mean())
+
 
         rng, rng_actor = jax.random.split(rng)
         (actor_loss, (entropy, q_min, q_std)), actor_grad = _actor_loss_function(
@@ -285,51 +311,43 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset):
         next_v_target = jax.vmap(_sample_next_v)(rng_next_v, batch)
         target = batch.reward + args.gamma * (1 - batch.done) * next_v_target
 
-        # --- Sample actions for CQL ---
-        def _sample_actions(rng, obs):
-            pi = actor_apply_fn(agent_state.actor.params, obs)
-            return pi.sample(seed=rng)
-
-        rng, rng_pi, rng_next = jax.random.split(rng, 3)
-        pi_actions = _sample_actions(rng_pi, batch.obs)
-        pi_next_actions = _sample_actions(rng_next, batch.next_obs)
-        rng, rng_random = jax.random.split(rng)
-        cql_random_actions = jax.random.uniform(
-            rng_random, shape=batch.action.shape, minval=-1.0, maxval=1.0
-        )
-
         # --- Update critics ---
-        @jax.value_and_grad
+        @partial(jax.value_and_grad, has_aux=True)
         def _q_loss_fn(params):
             q_pred = q_apply_fn(params, batch.obs, batch.action)
-            critic_loss = jnp.square((q_pred - jnp.expand_dims(target, -1)))
-            critic_loss = critic_loss.sum(-1).mean()
+            value_loss = jnp.square((q_pred - jnp.expand_dims(target, -1)))
+            value_loss = value_loss.sum(-1).mean()
 
-            rand_q = q_apply_fn(params, batch.obs, cql_random_actions)
-            pi_q = q_apply_fn(params, batch.obs, pi_actions)
-            # Note: Source implementation erroneously uses current obs in next_pi_q
-            next_pi_q = q_apply_fn(params, batch.next_obs, pi_next_actions)
-            all_qs = jnp.concatenate([rand_q, pi_q, next_pi_q, q_pred], axis=1)
-            q_ood = jax.scipy.special.logsumexp(all_qs / args.cql_temperature, axis=1)
-            q_ood = jax.lax.stop_gradient(q_ood * args.cql_temperature)
-            q_diff = (jnp.expand_dims(q_ood, 1) - q_pred).mean()
-            min_q_loss = q_diff * args.cql_min_q_weight
+            def _diversity_loss_fn(obs, action):
+                action_jac = jax.jacrev(q_apply_fn, argnums=2)(params, obs, action)
+                action_jac /= jnp.linalg.norm(action_jac, axis=-1, keepdims=True) + 1e-6
+                div_loss = action_jac @ action_jac.T
+                div_loss *= 1.0 - jnp.eye(args.num_critics)
+                return div_loss.sum()
 
-            critic_loss += min_q_loss.mean()
-            return critic_loss
+            diversity_loss = jax.vmap(_diversity_loss_fn)(batch.obs, batch.action)
+            diversity_loss = diversity_loss.mean() / (args.num_critics - 1)
+            critic_loss = value_loss + args.eta * diversity_loss
+            return critic_loss, (value_loss, diversity_loss)
 
-        critic_loss, critic_grad = _q_loss_fn(agent_state.vec_q.params)
+
+        (critic_loss, (value_loss, diversity_loss)), critic_grad = _q_loss_fn(
+            agent_state.vec_q.params
+        )
         updated_q = agent_state.vec_q.apply_gradients(grads=critic_grad)
         agent_state = agent_state._replace(vec_q=updated_q)
+
 
         # --- Perturb Q-values, calculate conservativeness ---
         def get_bias_estimates(rng, params, variances):
 
             rng, rng_q = jax.random.split(rng)
             rng_q = jax.random.split(rng_q, variances.shape[0])  # Shape: (n,)
+            
 
             # Calculate original Q-values (batch shape: (n, ...))
             q_pred = q_apply_fn(agent_state.vec_q.params, batch.obs, batch.action)
+
 
             def _perturb_q_values(rng, obs, actions, noise_variance):
                 # Sample noise from [-var, var]
@@ -358,10 +376,13 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset):
             )(rng_q, batch.obs, batch.action, variances)
 
 
+            # ood penalty (shape (var, ) mean penalty for each coeff)
+            penalty = (perturbed_q_curr.mean(-1) - perturbed_q_curr.min(-1)).mean(-1)
+
             # calculate Q-gap between perturbed and original Q-values for each critic
             q_gap = jnp.mean(perturbed_q_curr - jnp.expand_dims(q_pred, axis=0), axis=(1,2))
 
-            return q_gap
+            return q_gap, penalty
 
         num_perturbations = 3
         # Perturb actions from support
@@ -369,9 +390,11 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset):
 
         # lol
         variances_py = [0.1, 0.2, 0.3]
-        bias_estimates = get_bias_estimates(rng, agent_state.vec_q.params, variances)
+        bias_estimates, penalties = get_bias_estimates(rng, agent_state.vec_q.params, variances)
         loss = {
             "critic_loss": critic_loss,
+            "value_loss": value_loss,
+            "diversity_loss": diversity_loss,
             "actor_loss": actor_loss,
             "alpha_loss": alpha_loss,
             "entropy": entropy,
@@ -383,12 +406,14 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset):
         # Add pessimism
         for i, var in enumerate(variances_py):
             loss[f"bias_estimate_{var}"] = bias_estimates[i].astype(float)
+            loss[f"penalty_{var}"] = penalties[i].astype(float)
+
         return (rng, agent_state), loss
 
     return _train_step
 
 
-def train_cql(args):
+def train_edac(args):
     rng = jax.random.PRNGKey(args.seed)
 
     # --- Initialize logger ---
@@ -402,37 +427,8 @@ def train_cql(args):
         )
 
     # --- Initialize environment and dataset ---
-    env = gym.vector.make("Pendulum-v1", num_envs=args.eval_workers)
 
-    # dataset = d4rl.qlearning_dataset(gym.make(args.dataset))
-
-    # make lists for observations
-
-    def load_minari_dataset(name):
-        observations = []
-        actions = []
-        rewards = []
-        next_observations = []
-        terminals = []
-        dataset = minari.load_dataset(name)
-        for episode in tqdm.tqdm(dataset.iterate_episodes(), desc="Loading episodes to buffer"):
-            observations.extend(episode.observations)
-            actions.extend(episode.actions)
-            rewards.extend(episode.rewards)
-            next_observations.extend(episode.observations[1:])
-            terminals.extend(episode.terminations)
-
-        dataset = {
-            "observations": observations,
-            "actions": actions,
-            "rewards": rewards,
-            "next_observations": next_observations,
-            "terminals": terminals,
-        }
-
-        return dataset
-
-    dataset = load_minari_dataset(args.dataset)
+    dataset, env = load_minari_dataset(args.dataset)
 
     dataset = Transition(
         obs=jnp.array(dataset["observations"]),
@@ -441,9 +437,11 @@ def train_cql(args):
         next_obs=jnp.array(dataset["next_observations"]),
         done=jnp.array(dataset["terminals"]),
     )
-# --- Initialize agent and value networks ---
-    num_actions = env.single_action_space.shape[0]
-    dummy_obs = jnp.zeros(env.single_observation_space.shape)
+
+
+    # --- Initialize agent and value networks ---
+    num_actions = env.action_space.shape[0]
+    dummy_obs = jnp.zeros(env.observation_space.shape)
     dummy_action = jnp.zeros(num_actions)
     actor_net = TanhGaussianActor(num_actions)
     q_net = VectorQ(args.num_critics)
@@ -451,9 +449,8 @@ def train_cql(args):
 
     # Target networks share seeds to match initialization
     rng, rng_actor, rng_q, rng_alpha = jax.random.split(rng, 4)
-    actor_lr = args.actor_lr if args.actor_lr is not None else args.lr
     agent_state = AgentTrainState(
-        actor=create_train_state(args, rng_actor, actor_net, [dummy_obs], actor_lr),
+        actor=create_train_state(args, rng_actor, actor_net, [dummy_obs]),
         vec_q=create_train_state(args, rng_q, q_net, [dummy_obs, dummy_action]),
         vec_q_target=create_train_state(args, rng_q, q_net, [dummy_obs, dummy_action]),
         alpha=create_train_state(args, rng_alpha, alpha_net, []),
@@ -463,6 +460,22 @@ def train_cql(args):
     _agent_train_step_fn = make_train_step(
         args, actor_net.apply, q_net.apply, alpha_net.apply, dataset
     )
+
+    def create_checkpoint_dir():
+        # Create timestamped directory
+        time_str = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        dir_name = f"{args.algorithm}_{args.dataset.replace('/', '.')}/{time_str}"
+        ckpt_dir = os.path.join("./checkpoints", dir_name)
+        ckpt_dir = os.path.abspath(ckpt_dir)
+        os.makedirs(ckpt_dir, exist_ok=True)
+        return ckpt_dir
+
+    def save_train_state(train_state, ckpt_dir, step):
+        checkpoints.save_checkpoint(ckpt_dir, target=train_state, step=step, overwrite=True)
+        print(f"Checkpoint saved at step {step} in {ckpt_dir}")
+
+    ckpt_dir = create_checkpoint_dir()
+    save_train_state(agent_state, ckpt_dir, 0)
 
     num_evals = args.num_updates // args.eval_interval
     for eval_idx in range(num_evals):
@@ -477,7 +490,8 @@ def train_cql(args):
         # --- Evaluate agent ---
         rng, rng_eval = jax.random.split(rng)
         returns = eval_agent(args, rng_eval, env, agent_state)
-        #scores = d4rl.get_normalized_score(args.dataset, returns) * 100.0
+        # scores = d4rl.get_normalized_score(args.dataset, returns) * 100.0
+        scores = jnp.zeros(2)
 
         # --- Log metrics ---
         step = (eval_idx + 1) * args.eval_interval
@@ -492,6 +506,11 @@ def train_cql(args):
             }
             wandb.log(log_dict)
 
+        if eval_idx == num_evals // 2:
+            save_train_state(agent_state, ckpt_dir, eval_idx)
+
+    save_train_state(agent_state, ckpt_dir, num_evals)
+
     # --- Evaluate final agent ---
     if args.eval_final_episodes > 0:
         final_iters = int(onp.ceil(args.eval_final_episodes / args.eval_workers))
@@ -499,14 +518,18 @@ def train_cql(args):
         _rng = jax.random.split(rng, final_iters)
         rets = onp.concatenate([eval_agent(args, _rng, env, agent_state) for _rng in _rng])
         env.close()
-        # scores = d4rl.get_normalized_score(args.dataset, rets) * 100.0
+
+        # need to fix this placeholder
+        # scores = d4rl.get_normalized_score(args.dataset, returns) * 100.0
+        scores = jnp.zeros(2)
+
         agg_fn = lambda x, k: {k: x, f"{k}_mean": x.mean(), f"{k}_std": x.std()}
         info = agg_fn(rets, "final_returns") | agg_fn(scores, "final_scores")
 
         # --- Write final returns to file ---
         os.makedirs("final_returns", exist_ok=True)
         time_str = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-        filename = f"{args.algorithm}_{args.dataset}_{time_str}.npz"
+        filename = f"{args.algorithm}_{(args.dataset).replace('/', '.')}_{time_str}.npz"
         with open(os.path.join("final_returns", filename), "wb") as f:
             onp.savez_compressed(f, **info, args=asdict(args))
 
@@ -516,17 +539,8 @@ def train_cql(args):
     if args.log:
         wandb.finish()
 
-    # save final q state
-    checkpoints.save_checkpoint(
-        "checkpoints",
-        agent_state,
-        step=0,
-        overwrite=True,
-        )
-
-
 if __name__ == "__main__":
     # --- Parse arguments ---
     args = tyro.cli(Args)
     # --- Train agent ---
-    train_cql(args)
+    train_edac(args)

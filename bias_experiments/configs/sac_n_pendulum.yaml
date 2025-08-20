@@ -1,0 +1,50 @@
+command:
+  - python3
+  - ${program}
+  - ${args_no_boolean_flags}
+entity: ahoj
+method: grid
+name: SAC-N
+program: minari/sac_n.py
+project: pendulum-sac-n
+
+parameters:
+  # --- Experiment ---
+  seed:
+    values: [0, 1]
+  dataset:
+    values: [pendulum/gaussian-v0, pendulum/uniform-v0, pendulum/mixture-v0]
+  algorithm:
+    value: sac_n
+  num_updates:
+    values: [50_000, 100_000]
+  eval_interval:
+    value: 2500
+  eval_workers:
+    value: 1
+  eval_final_episodes:
+    value: 0
+
+  # --- Logging ---
+  log:
+    value: true
+  wandb_project:
+    value: pendulum-sac-n
+  wandb_team:
+    value: ahoj
+  wandb_group:
+    value: debug
+
+  # --- Generic optimization ---
+  lr:
+    value: 0.0003
+  batch_size:
+    value: 256
+  gamma:
+    value: 0.99
+  polyak_step_size:
+    value: 0.005
+
+  # --- SAC-N ---
+  num_critics:
+    values: [10, 30]  # 500 and 1000 have high GPU memory usage

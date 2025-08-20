@@ -1,10 +1,15 @@
 
 
+import os
 import sys
 import signal
 import time
 import yaml
 import wandb
+
+
+# prevent jax from prealloc mem
+os.environ["XLA_PYTHON_CLIENT_PREALLOCATE"] = "false"
 
 MUJOCO_TASKS = [
   "halfcheetah-random-v2",
@@ -22,6 +27,16 @@ MUJOCO_TASKS = [
   "walker2d-expert-v2",
   "walker2d-medium-expert-v2",
   "walker2d-medium-replay-v2",
+]
+
+
+ANT_TASKS = [
+    #"antmaze-umaze-diverse-v2",
+    #"antmaze-umaze-v2",
+    #antmaze-medium-play-v2",
+    #antmaze-medium-diverse-v2",
+    "antmaze-large-play-v2",
+    "antmaze-large-diverse-v2",
 ]
 
 
@@ -66,7 +81,7 @@ def main(config_path):
         raise ValueError("Sweep config must specify entity")
 
 
-    envs = MUJOCO_TASKS
+    envs = ANT_TASKS
 
     for env in envs:
         sweep_id = create_sweep_for_env(base_sweep_config, env, project_name, entity_name)
