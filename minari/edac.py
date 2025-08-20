@@ -471,7 +471,7 @@ def train_edac(args):
         return ckpt_dir
 
     def save_train_state(train_state, ckpt_dir, step):
-        checkpoints.save_checkpoint(ckpt_dir, target=train_state, step=step, overwrite=True)
+        checkpoints.save_checkpoint(ckpt_dir, target=train_state, step=step)
         print(f"Checkpoint saved at step {step} in {ckpt_dir}")
 
     ckpt_dir = create_checkpoint_dir()
