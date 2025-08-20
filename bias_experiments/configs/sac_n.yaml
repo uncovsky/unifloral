@@ -17,7 +17,7 @@ parameters:
   algorithm:
     value: sac_n
   num_updates:
-    values: [50_000, 100_000]
+    values: [200_000, 500_000]
   eval_interval:
     value: 2500
   eval_workers:
