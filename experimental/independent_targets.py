@@ -491,8 +491,6 @@ def train(args):
             # --- Log metrics ---
             step = (eval_idx + 1) * args.eval_interval
             print("Step:", step, f"\t Score: {scores.mean():.2f}")
-            print("Actor loss: ", loss["actor_loss"][-1])
-            print("Critic loss: ", loss["critic_loss"][-1])
 
             if args.log:
                 log_dict = {
