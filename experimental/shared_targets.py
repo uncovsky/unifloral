@@ -357,6 +357,10 @@ def train_sac_n(args):
         args, actor_net.apply, q_net.apply, alpha_net.apply, dataset
     )
 
+    """
+        Pretraining
+    """
+
     if args.pretrain_updates > 0:
         # pretrain here
         pretrain_evals = args.pretrain_updates // args.eval_interval
@@ -376,8 +380,10 @@ def train_sac_n(args):
 
             # --- Log metrics ---
             step = (eval_idx + 1) * args.eval_interval
-            print(loss["actor_loss"][-1])
             print("Step:", step, f"\t Score: {scores.mean():.2f}")
+            print("Actor loss: ", loss["actor_loss"][-1])
+            print("Critic loss: ", loss["critic_loss"][-1])
+
             if args.log:
                 log_dict = {
                     "return": returns.mean(),
@@ -389,6 +395,10 @@ def train_sac_n(args):
                 wandb.log(log_dict)
 
     num_evals = (args.num_updates - args.pretrain_updates) // args.eval_interval
+
+    """
+        Offline Training
+    """
 
     for eval_idx in range(num_evals):
         # --- Execute train loop ---

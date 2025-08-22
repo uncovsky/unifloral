@@ -68,6 +68,69 @@ def pretrain_loss_factory(args, actor_apply_fn, q_apply_fn, alpha_apply_fn):
 
         return _loss_fn(agent_state.vec_q.params, rng, batch)
 
+    def sarsa_edac_loss(agent_state, rng, batch):
+        # calculate targets w. no grad
+        bootstrap_q = q_apply_fn(agent_state.vec_q_target.params, batch.next_obs, batch.next_action)
+        target = jnp.expand_dims(batch.reward, -1) + \
+                 args.gamma * (1 - jnp.expand_dims(batch.done, -1)) * bootstrap_q
+
+        lag = agent_state.pretrain_lag
+    
+        @partial(jax.value_and_grad, argnums=0)
+        def _loss_fn(critic_params, rng, batch):
+            def _diversity_loss_fn(obs, action):
+                # shape (E, A) ensemble outputs, A inputs (action)
+                action_jac = jax.jacrev(q_apply_fn, argnums=2)(critic_params, obs, action)
+                # shape (E,A), normalized gradients for each ensemble member
+                action_jac /= jnp.linalg.norm(action_jac, axis=-1, keepdims=True) + 1e-6
+                # shape (E,E) pairwise diversity loss
+                div_loss = action_jac @ action_jac.T
+                # Mask diagonal to avoid penalizing gradient magnitude
+                div_loss *= 1.0 - jnp.eye(args.num_critics)
+                return div_loss.sum()
+
+            q_values = q_apply_fn(critic_params, batch.obs, batch.action)
+            sarsa_loss = jnp.square(q_values - target)
+
+            # (B,1) vector of per-sample diversity losses
+            diversity_loss = jax.vmap(_diversity_loss_fn)(batch.obs, batch.action)
+
+            # mean here as used in EDAC repo: https://github.com/snu-mllab/EDAC/blob/198d5708701b531fd97a918a33152e1914ea14d7/lifelong_rl/trainers/q_learning/sac.py#L205
+            diversity_loss = diversity_loss.mean() / (args.num_critics - 1)
+
+            return sarsa_loss.mean() + lag * diversity_loss
+
+        return _loss_fn(agent_state.vec_q.params, rng, batch)
+
+
+    def sarsa_cql_loss(agent_state, rng, batch):
+        lag = agent_state.pretrain_lag 
+
+        # calculate targets for Q(s,a)
+        bootstrap_q = q_apply_fn(agent_state.vec_q_target.params, batch.next_obs, batch.next_action)
+        target = jnp.expand_dims(batch.reward, -1) + \
+                 args.gamma * (1 - jnp.expand_dims(batch.done, -1)) * bootstrap_q
+
+        # Sample random actions from actor, used for gap-expansion regularizer
+        rng, rng_actor = jax.random.split(rng, 2)
+        def _sample_actions(rng, obs):
+            pi = actor_apply_fn(agent_state.actor.params, obs)
+            return pi.sample(seed=rng)
+        pi_actions = _sample_actions(rng_actor, batch.obs)
+    
+        @partial(jax.value_and_grad, argnums=0)
+        def _loss_fn(critic_params, rng, batch):
+            q_values = q_apply_fn(critic_params, batch.obs, batch.action)
+            next_q_values = q_apply_fn(critic_params, batch.obs, pi_actions)
+            # reduce before add so we only materialize the (B,) vector
+            sarsa_loss = jnp.square(q_values - target).sum(-1)
+            cql_loss = (next_q_values - q_values).sum(-1)
+            return (sarsa_loss + lag * cql_loss).mean()
+
+
+        return _loss_fn(agent_state.vec_q.params, rng, batch)
+
+
 
     """
         Registering losses, lookup
@@ -75,6 +138,8 @@ def pretrain_loss_factory(args, actor_apply_fn, q_apply_fn, alpha_apply_fn):
 
     loss_dict = {
             "bc+sarsa": (soft_bc_loss, sarsa_loss),
+            "bc+sarsa-cql": (soft_bc_loss, sarsa_cql_loss),
+            "bc+sarsa-edac": (soft_bc_loss, sarsa_edac_loss),
     }
 
     if args.pretrain_loss in loss_dict:
