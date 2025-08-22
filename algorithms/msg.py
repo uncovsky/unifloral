@@ -318,7 +318,6 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset):
             critic_loss = jnp.square((q_pred - target))
             # Take mean over batch and sum over ensembles
             critic_loss = critic_loss.sum(-1).mean()
-
             # Q(s,a) for a ~ pi(s), shape [B, ensemble_size]
             pi_q = q_apply_fn(params, batch.obs, pi_actions)
             # [B, 1] for each s in batch, reduce over ensemble dim
