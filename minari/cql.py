@@ -14,6 +14,7 @@ from flax.training.train_state import TrainState
 
 import gymnasium as gym
 import jax
+import json
 import jax.numpy as jnp
 import minari
 import mock_environments
@@ -468,8 +469,13 @@ def train_cql(args):
         ckpt_dir = os.path.join("./checkpoints", dir_name)
         ckpt_dir = os.path.abspath(ckpt_dir)
         os.makedirs(ckpt_dir, exist_ok=True)
-        return ckpt_dir
 
+        # Save args to JSON inside the checkpoint dir
+        args_path = os.path.join(ckpt_dir, "args.json")
+        with open(args_path, "w") as f:
+            json.dump(asdict(args), f, indent=2)
+
+        return ckpt_dir
 
     def save_train_state(train_state, ckpt_dir, step):
         checkpoints.save_checkpoint(ckpt_dir, target=train_state, step=step)
