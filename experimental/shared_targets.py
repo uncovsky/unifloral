@@ -48,7 +48,6 @@ class Args:
     # --- Experimental --- 
     pretrain_updates : int = 100_000
     pretrain_loss : str = "bc+sarsa"
-    # todo use a schedule later
     pretrain_lag_init: float = 1.0
 
 
@@ -304,7 +303,7 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset):
     return _train_step
 
 
-def train_sac_n(args):
+def train(args):
     rng = jax.random.PRNGKey(args.seed)
 
     # --- Initialize logger ---
@@ -457,4 +456,4 @@ if __name__ == "__main__":
     # --- Parse arguments ---
     args = tyro.cli(Args)
     # --- Train agent ---
-    train_sac_n(args)
+    train(args)
