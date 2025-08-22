@@ -1,0 +1,62 @@
+command:
+  - python3
+  - ${program}
+  - ${args_no_boolean_flags}
+entity: ahoj
+method: grid
+name: ant-pretrained
+program: experimental/shared_targets.py
+project: ant-pretraining-grid
+
+parameters:
+  # --- Experiment ---
+  seed:
+    values: [0, 1, 2, 3, 4]
+  dataset:
+    values:
+      - antmaze-medium-play-v2
+      - antmaze-medium-diverse-v2
+  algorithm:
+    value: sacn
+  num_updates:
+    value: 1_000_000
+  eval_interval:
+    value: 2500
+  eval_workers:
+    value: 8
+  eval_final_episodes:
+    value: 1000
+
+  # --- Logging ---
+  log:
+    value: true
+  wandb_project:
+    value: unifloral
+  wandb_team:
+    value: flair
+  wandb_group:
+    value: debug
+
+  # --- Generic optimization ---
+  lr:
+    value: 0.0003
+  batch_size:
+    value: 256
+  gamma:
+    value: 0.99
+  polyak_step_size:
+    value: 0.005
+
+  # --- SAC-N ---
+  num_critics:
+    values: [10, 20, 50]  # 100 has high GPU memory usage
+  # --- Experimental ---
+  pretrain_updates:
+    values: [0, 50000, 200000]
+  pretrain_loss:
+    values: ["bc+sarsa", "bc+sarsa-edac", "bc+sarsa-cql"]
+  pretrain_lag_init:
+    values: [0.1, 0.2, 0.5]
+
+
+  
