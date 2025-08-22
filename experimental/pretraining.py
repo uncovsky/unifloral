@@ -39,7 +39,11 @@ def pretrain_loss_factory(args, actor_apply_fn, q_apply_fn, alpha_apply_fn):
             def _loss_fn(rng, transition):
                 pi = actor_apply_fn(actor_params, transition.obs)
                 _, log_pi = pi.sample_and_log_prob(seed=rng)
-                log_action = pi.log_prob(transition.action)
+
+                # handle numerical issues w. logprob in distrax
+                eps = 1e-7
+                action = jnp.clip(transition.action, -1+eps, 1-eps)
+                log_action = pi.log_prob(action)
 
                 # maximize logprob of dataset action + entropy
                 return -log_action.sum(-1) + alpha * log_pi.sum(-1)
