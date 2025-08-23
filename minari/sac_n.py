@@ -415,9 +415,8 @@ def train_sac_n(args):
 
         # --- Evaluate agent ---
         rng, rng_eval = jax.random.split(rng)
-        returns = eval_agent(args, rng_eval, env, agent_state)
+        scores = eval_agent(args, rng_eval, env, agent_state)
         # scores = d4rl.get_normalized_score(args.dataset, returns) * 100.0
-        scores = jnp.zeros(2)
 
         # --- Log metrics ---
         step = (eval_idx + 1) * args.eval_interval
@@ -442,12 +441,11 @@ def train_sac_n(args):
         final_iters = int(onp.ceil(args.eval_final_episodes / args.eval_workers))
         print(f"Evaluating final agent for {final_iters} iterations...")
         _rng = jax.random.split(rng, final_iters)
-        rets = onp.concatenate([eval_agent(args, _rng, env, agent_state) for _rng in _rng])
+        scores = onp.concatenate([eval_agent(args, _rng, env, agent_state) for _rng in _rng])
         env.close()
 
         # need to fix this placeholder
         # scores = d4rl.get_normalized_score(args.dataset, returns) * 100.0
-        scores = jnp.zeros(2)
 
         agg_fn = lambda x, k: {k: x, f"{k}_mean": x.mean(), f"{k}_std": x.std()}
         info = agg_fn(rets, "final_returns") | agg_fn(scores, "final_scores")
