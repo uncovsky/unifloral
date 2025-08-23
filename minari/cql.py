@@ -18,7 +18,7 @@ import json
 import jax.numpy as jnp
 import minari
 import mock_environments
-import numpy as onp 
+import numpy as onp
 import optax
 import tyro
 import wandb
@@ -389,7 +389,7 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset):
 
         num_perturbations = 3
         # Perturb actions from support
-        variances = jnp.linspace(0.1, 0.3, num_perturbations) 
+        variances = jnp.linspace(0.1, 0.3, num_perturbations)
 
         # lol
         variances_py = [0.1, 0.2, 0.3]
@@ -482,7 +482,6 @@ def train_cql(args):
         print(f"Checkpoint saved at step {step} in {ckpt_dir}")
 
     ckpt_dir = create_checkpoint_dir()
-    save_train_state(agent_state, ckpt_dir, 0)
 
     num_evals = args.num_updates // args.eval_interval
     for eval_idx in range(num_evals):
@@ -497,6 +496,7 @@ def train_cql(args):
         # --- Evaluate agent ---
         rng, rng_eval = jax.random.split(rng)
         scores = eval_agent(args, rng_eval, env, agent_state)
+        returns = scores
         # scores = d4rl.get_normalized_score(args.dataset, returns) * 100.0
 
         # --- Log metrics ---

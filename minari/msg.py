@@ -369,7 +369,7 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset):
 
             rng, rng_q = jax.random.split(rng)
             rng_q = jax.random.split(rng_q, variances.shape[0])  # Shape: (n,)
-            
+
 
             # Calculate original Q-values (batch shape: (n, ...))
             q_pred = q_apply_fn(agent_state.vec_q.params, batch.obs, batch.action)
@@ -406,13 +406,13 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset):
 
             # calculate Q-gap between perturbed and original Q-values for each critic
             q_gap = jnp.mean(perturbed_q_curr - jnp.expand_dims(q_pred, axis=0), axis=(1,2))
-            
+
 
             return q_gap, penalty
 
         num_perturbations = 3
         # Perturb actions from support
-        variances = jnp.linspace(0.1, 0.3, num_perturbations) 
+        variances = jnp.linspace(0.1, 0.3, num_perturbations)
 
         # lol
         variances_py = [0.1, 0.2, 0.3]
@@ -509,7 +509,6 @@ def train_msg(args):
         print(f"Checkpoint saved at step {step} in {ckpt_dir}")
 
     ckpt_dir = create_checkpoint_dir()
-    save_train_state(agent_state, ckpt_dir, 0)
 
     num_evals = args.num_updates // args.eval_interval
     for eval_idx in range(num_evals):
@@ -524,6 +523,7 @@ def train_msg(args):
         # --- Evaluate agent ---
         rng, rng_eval = jax.random.split(rng)
         scores = eval_agent(args, rng_eval, env, agent_state)
+        returns = scores
         # scores = d4rl.get_normalized_score(args.dataset, returns) * 100.0
 
         # --- Log metrics ---
