@@ -471,9 +471,10 @@ def train(args):
         Pretraining
     """
 
+    pretrain_evals = args.pretrain_updates // args.eval_interval
+
     if args.pretrain_updates > 0:
         # pretrain here
-        pretrain_evals = args.pretrain_updates // args.eval_interval
 
         for eval_idx in range(pretrain_evals):
 
@@ -491,8 +492,6 @@ def train(args):
             # --- Log metrics ---
             step = (eval_idx + 1) * args.eval_interval
             print("Step:", step, f"\t Score: {scores.mean():.2f}")
-            print("Actor loss: ", loss["actor_loss"][-1])
-            print("Critic loss: ", loss["critic_loss"][-1])
 
             if args.log:
                 log_dict = {
@@ -525,7 +524,7 @@ def train(args):
         scores = d4rl.get_normalized_score(args.dataset, returns) * 100.0
 
         # --- Log metrics ---
-        step = (eval_idx + 1) * args.eval_interval
+        step = (eval_idx + pretrain_evals + 1) * args.eval_interval
         print("Step:", step, f"\t Score: {scores.mean():.2f}")
         if args.log:
             log_dict = {

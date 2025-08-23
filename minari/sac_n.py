@@ -13,6 +13,7 @@ from flax.training.train_state import TrainState
 import gymnasium as gym
 import jax
 import jax.numpy as jnp
+import json
 import minari
 import mock_environments
 import numpy as onp
@@ -386,7 +387,14 @@ def train_sac_n(args):
         ckpt_dir = os.path.join("./checkpoints", dir_name)
         ckpt_dir = os.path.abspath(ckpt_dir)
         os.makedirs(ckpt_dir, exist_ok=True)
+
+        # Save args to JSON inside the checkpoint dir
+        args_path = os.path.join(ckpt_dir, "args.json")
+        with open(args_path, "w") as f:
+            json.dump(asdict(args), f, indent=2)
+
         return ckpt_dir
+
 
     def save_train_state(train_state, ckpt_dir, step):
         checkpoints.save_checkpoint(ckpt_dir, target=train_state, step=step)
@@ -407,9 +415,8 @@ def train_sac_n(args):
 
         # --- Evaluate agent ---
         rng, rng_eval = jax.random.split(rng)
-        returns = eval_agent(args, rng_eval, env, agent_state)
+        scores = eval_agent(args, rng_eval, env, agent_state)
         # scores = d4rl.get_normalized_score(args.dataset, returns) * 100.0
-        scores = jnp.zeros(2)
 
         # --- Log metrics ---
         step = (eval_idx + 1) * args.eval_interval
@@ -434,12 +441,11 @@ def train_sac_n(args):
         final_iters = int(onp.ceil(args.eval_final_episodes / args.eval_workers))
         print(f"Evaluating final agent for {final_iters} iterations...")
         _rng = jax.random.split(rng, final_iters)
-        rets = onp.concatenate([eval_agent(args, _rng, env, agent_state) for _rng in _rng])
+        scores = onp.concatenate([eval_agent(args, _rng, env, agent_state) for _rng in _rng])
         env.close()
 
         # need to fix this placeholder
         # scores = d4rl.get_normalized_score(args.dataset, returns) * 100.0
-        scores = jnp.zeros(2)
 
         agg_fn = lambda x, k: {k: x, f"{k}_mean": x.mean(), f"{k}_std": x.std()}
         info = agg_fn(rets, "final_returns") | agg_fn(scores, "final_scores")

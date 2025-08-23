@@ -49,7 +49,10 @@ class Args:
     pretrain_updates : int = 100_000
     pretrain_loss : str = "bc+sarsa"
     pretrain_lag_init: float = 1.0
-
+    # --- RPF --- 
+    prior: bool = True
+    randomized_prior_depth : int = 3
+    randomized_prior_scale : float = 1.0
 
 
 r"""
@@ -74,21 +77,31 @@ def sym(scale):
 
 
 class SoftQNetwork(nn.Module):
+    depth: int = 3
     @nn.compact
     def __call__(self, obs, action):
         x = jnp.concatenate([obs, action], axis=-1)
-        for _ in range(3):
+        for _ in range(self.depth):
             x = nn.Dense(256, bias_init=constant(0.1))(x)
             x = nn.relu(x)
         q = nn.Dense(1, kernel_init=sym(3e-3), bias_init=sym(3e-3))(x)
         return q.squeeze(-1)
 
-
-# TODO: randomized prior + hyperparams
+class RandomizedPriorQNetwork(nn.Module):
+    depth: int 
+    scale: float  
+    @nn.compact
+    def __call__(self, obs, action):
+        q_learnable = SoftQNetwork()(obs, action)
+        prior_net = SoftQNetwork(depth=self.depth, name="prior_q_network")
+        q_prior = prior_net(obs, action)
+        # make sure to not prop grad thru prior net
+        q_prior = jax.lax.stop_gradient(q_prior)
+        # Combine learnable and prior
+        return q_learnable + self.scale * q_prior
 
 class VectorQ(nn.Module):
     num_critics: int
-
     @nn.compact
     def __call__(self, obs, action):
         vmap_critic = nn.vmap(
@@ -102,6 +115,22 @@ class VectorQ(nn.Module):
         q_values = vmap_critic()(obs, action)
         return q_values
 
+class PriorVectorQ(nn.Module):
+    num_critics: int
+    depth: int
+    scale: float
+    @nn.compact
+    def __call__(self, obs, action):
+        vmap_critic = nn.vmap(
+            RandomizedPriorQNetwork,
+            variable_axes={"params": 0},  # Parameters not shared between critics
+            split_rngs={"params": True, "dropout": True},  # Different initializations
+            in_axes=None,
+            out_axes=-1,
+            axis_size=self.num_critics,
+        )
+        q_values = vmap_critic(depth=self.depth, scale=self.scale)(obs, action)
+        return q_values
 
 class TanhGaussianActor(nn.Module):
     num_actions: int
@@ -333,7 +362,17 @@ def train(args):
     dummy_obs = jnp.zeros(env.single_observation_space.shape)
     dummy_action = jnp.zeros(num_actions)
     actor_net = TanhGaussianActor(num_actions)
-    q_net = VectorQ(args.num_critics)
+
+    # --- Init Q, include prior net if enabled ---
+    if args.prior:
+        q_net = PriorVectorQ(
+            num_critics=args.num_critics,
+            depth=args.randomized_prior_depth,
+            scale=args.randomized_prior_scale,
+        )
+    else:
+        q_net = VectorQ(args.num_critics)
+
     alpha_net = EntropyCoef()
 
     # Target networks share seeds to match initialization
@@ -360,10 +399,9 @@ def train(args):
         Pretraining
     """
 
-    if args.pretrain_updates > 0:
-        # pretrain here
-        pretrain_evals = args.pretrain_updates // args.eval_interval
+    pretrain_evals = args.pretrain_updates // args.eval_interval
 
+    if args.pretrain_updates > 0:
         for eval_idx in range(pretrain_evals):
 
             (rng, agent_state), loss = jax.lax.scan(
@@ -414,7 +452,7 @@ def train(args):
         scores = d4rl.get_normalized_score(args.dataset, returns) * 100.0
 
         # --- Log metrics ---
-        step = (eval_idx + 1) * args.eval_interval
+        step = (eval_idx + 1 + pretrain_evals) * args.eval_interval
         print("Step:", step, f"\t Score: {scores.mean():.2f}")
         if args.log:
             log_dict = {
