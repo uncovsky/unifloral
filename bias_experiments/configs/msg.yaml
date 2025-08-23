@@ -17,7 +17,8 @@ parameters:
   algorithm:
     value: msg
   num_updates:
-    values: [200_000, 500_000]
+    #values: [200_000, 500_000]
+    value : 300_000
   eval_interval:
     value: 2500
   eval_workers:
@@ -47,10 +48,10 @@ parameters:
 
   # --- SAC-N ---
   num_critics:
-    values: [10, 30]
+    value: 10
 
   # --- MSG ---
   cql_min_q_weight: 
-    values : [0.0, 0.1, 0.3]
+    values : [0.1, 0.3]
   actor_lcb_coef : 
-    values : [2.0, 4.0, 8.0]
+    values : [2.0, 8.0]

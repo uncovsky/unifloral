@@ -13,12 +13,12 @@ parameters:
   seed:
     values: [0, 1]
   dataset:
-    values: [square-reach/horizon-10-v0, square-reach/horizon-20-v0, square-reach/horizon-50-v0,
-             pendulum/gaussian-v0, pendulum/uniform-v0, pendulum/mixture-v0]
+    values: [square-reach/horizon-10-v0, square-reach/horizon-20-v0, square-reach/horizon-50-v0]
   algorithm:
     value: cql
   num_updates:
-    values: [200_000, 500_000]
+    #values: [200_000, 500_000]
+    value : 300_000
   eval_interval:
     value: 2500
   eval_workers:
@@ -56,4 +56,4 @@ parameters:
   cql_temperature:
     value: 1.0
   cql_min_q_weight:
-    values: [5.0, 10.0, 20.0]
+    values: [0.0, 5.0, 10.0]
