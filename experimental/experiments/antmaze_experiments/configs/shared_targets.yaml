@@ -6,7 +6,7 @@ entity: ahoj
 method: grid
 name: shared_targets 
 program: algorithms/shared_targets.py
-project: square-shared-targets
+project: antmaze-shared-targets
 
 parameters:
   # --- Experiment ---
@@ -23,7 +23,7 @@ parameters:
   num_updates:
     value : 1_500_000
   eval_interval:
-    value: 2500
+    value: 10_000
   eval_workers:
     value: 8
   eval_final_episodes:
@@ -33,7 +33,7 @@ parameters:
   log:
     value: true
   wandb_project:
-    value: square-sac-n
+    value: antmaze-shared-targets
   wandb_team:
     value: ahoj
   wandb_group:
