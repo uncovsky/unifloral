@@ -194,6 +194,8 @@ def eval_agent(args, rng, env, agent_state):
     #seeds_reset = [_rng_to_integer_seed(rng) for rng in rng_reset]
 
     # unused seed!
+    # DISCLAIMER: does not work with async envs! need to fix if we use
+    # gymnasium.vector.asyncenv or something similar. 
     obs, _ = env.reset()
 
     # --- Rollout agent ---
@@ -212,9 +214,14 @@ def eval_agent(args, rng, env, agent_state):
         action = _policy_step(rng_step, jnp.array(obs))
         obs, reward, terminated, truncated, info = env.step(onp.array(action))
 
+        if not isinstance(reward, onp.ndarray):
+            reward = jnp.array([reward], dtype=jnp.float32)
+
+        # --- Update cumulative reward ---
+        cum_reward += reward * ~done
+
         # --- Track cumulative reward ---
         done = terminated | truncated
-        cum_reward += reward * ~terminated
 
     return cum_reward
 
