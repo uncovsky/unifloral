@@ -24,9 +24,9 @@ parameters:
   eval_interval:
     value: 2500
   eval_workers:
-    value: 1
+    value: 8
   eval_final_episodes:
-    value: 0
+    value: 128
 
   # --- Logging ---
   log:
