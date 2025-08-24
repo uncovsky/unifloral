@@ -25,7 +25,7 @@ class SquareReachEnv(gym.Env):
         super().__init__()
         assert H > 0, "Horizon H must be positive."
         self.H = H
-        self.step_size = 1.0 / H
+        self.step_size = np.sqrt(2) / H
         self.render_mode = render_mode
 
         # Observation: 2D position
@@ -82,6 +82,7 @@ class SquareReachEnv(gym.Env):
         # Check goal condition
         dist_to_goal = np.linalg.norm(self.state - self.goal)
         terminated = dist_to_goal <= self.step_size
+        
         reward = 1.0 if terminated else 0.0
 
         # truncate on double the effective horizon
@@ -91,7 +92,14 @@ class SquareReachEnv(gym.Env):
 
     def render(self):
         if self.render_mode == "human":
-            print(f"Step {self.t}, Pos: {self.state}")
+            plt.figure(figsize=(6, 6))
+            plt.xlim(0, 1)
+            plt.ylim(0, 1)
+            plt.plot(self.goal[0], self.goal[1], 'ro', label='Goal')
+            plt.plot(self.state[0], self.state[1], 'bo', label='Current Position')
+            dist_to_goal = np.linalg.norm(self.state - self.goal)
+            print(f"Distance to goal: {dist_to_goal:.2f}")
+            plt.show()
 
     def close(self):
         pass
@@ -103,11 +111,13 @@ class SquareReachEnv(gym.Env):
         plt.ylim(0, 1)
         plt.plot(self.goal[0], self.goal[1], 'ro', label='Goal')
 
-        for traj in self.trajectories[:self.trajectories_limit]:
+        for traj in self.trajectories:
             traj = np.array(traj)
 
             # plot only dots for each step
             plt.plot(traj[:, 0], traj[:, 1], 'o-', markersize=2, alpha=0.5)
+
+        self.trajectories = []  # Clear trajectories after plotting
 
         plt.xlabel('X Position')
         plt.ylabel('Y Position')
@@ -116,6 +126,3 @@ class SquareReachEnv(gym.Env):
         plt.grid()
 
         plt.savefig(f"square_horizon={self.H}_trajs.png")
-
-
-
