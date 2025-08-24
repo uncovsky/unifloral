@@ -5,22 +5,23 @@ command:
 entity: ahoj
 method: grid
 name: CQL
-program: experimental/algorithms/cql.py
+program: algorithms/cql.py
 project: square-cql
 
 parameters:
   # --- Experiment ---
   seed:
     values: [0, 1]
-  dataset:
+  dataset-source:
+    value: minari
+  dataset-name:
     values: [square-reach/horizon-10-v0, square-reach/horizon-20-v0, square-reach/horizon-50-v0]
   algorithm:
     value: cql
   num_updates:
-    #values: [200_000, 500_000]
     value : 300_000
   eval_interval:
-    value: 2500
+    value: 25_000
   eval_workers:
     value: 1
   eval_final_episodes:
@@ -59,5 +60,3 @@ parameters:
     values: [0.0, 0.5, 1.0] # Keep weight relatively low, since near-expert data
 
   # --- Experimental ---
-  
-

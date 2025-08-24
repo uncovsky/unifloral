@@ -10,7 +10,7 @@ import wandb
 # prevent jax from prealloc mem
 os.environ["XLA_PYTHON_CLIENT_PREALLOCATE"] = "false"
 
-def main(config_path):
+def wandb_sweep_cfg(config_path):
     with open(config_path, "r") as f:
         sweep_cfg = yaml.safe_load(f)
 
@@ -32,4 +32,4 @@ if __name__ == "__main__":
         print("Usage: python wandb_sweep_driver.py <sweep_config.yaml>")
         sys.exit(1)
     config_path = sys.argv[1]
-    main(config_path)
+    wandb_sweep_cfg(config_path)

@@ -75,9 +75,6 @@ def load_configs(config_dir):
 
     return configs
     
-def create_sweep_for_env(base_sweep_config, env_name, project_name, entity_name):
-    sweep_cfg = base_sweep_config.copy()
-
 def run_bias_experiments(config_dir, run_limit=None):
     print("Starting bias experiments...")
 
