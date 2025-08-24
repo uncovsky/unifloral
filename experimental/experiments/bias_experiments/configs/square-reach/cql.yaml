@@ -5,7 +5,7 @@ command:
 entity: ahoj
 method: grid
 name: CQL
-program: minari/cql.py
+program: experimental/algorithms/cql.py
 project: square-cql
 
 parameters:
@@ -56,4 +56,8 @@ parameters:
   cql_temperature:
     value: 1.0
   cql_min_q_weight:
-    values: [0.0, 5.0, 10.0]
+    values: [0.0, 0.5, 1.0] # Keep weight relatively low, since near-expert data
+
+  # --- Experimental ---
+  
+
