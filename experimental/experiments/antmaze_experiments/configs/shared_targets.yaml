@@ -13,10 +13,10 @@ parameters:
   seed:
     values: [0, 1, 2]
   dataset-source:
-    value: minari
+    value: d4rl
   dataset-name:
     values:
-     - antmaze-medium-play-v2,
+     - antmaze-medium-play-v2
      - antmaze-medium-diverse-v2
   algorithm:
     value: shared_targets
@@ -45,7 +45,7 @@ parameters:
   batch_size:
     value: 256
   gamma:
-    value: 0.999
+    value: 0.99
   polyak_step_size:
     value: 0.005
 
@@ -56,7 +56,7 @@ parameters:
   pretrain_loss:
     values:
       - "bc+sarsa"
-  pretrain_steps:
+  pretrain_updates:
     values:
       - 0
       - 200_000
