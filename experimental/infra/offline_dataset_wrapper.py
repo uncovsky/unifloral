@@ -267,13 +267,12 @@ def eval_agent_gym(args, rng, env, agent_state):
     # Get a list of integer seeds from jax rng
     seeds_reset = [rng_to_integer_seed(rng) for rng in rng_reset]
 
-    try:
-        obs = env.reset(seed=seeds_reset)
-    except:
-        # Some envs (like Antmaze do not support resets with seed)
+    env_name = env.env_fns[0]().spec.name
+    if "antmaze" in env_name.lower():
         warnings.warn("Environment does not support seeding, eval is nondeterministic")
         obs = env.reset()
-
+    else:
+        obs = env.reset(seed=seeds_reset)
     # --- Rollout agent ---
     @jax.jit
     @jax.vmap
