@@ -22,7 +22,7 @@ parameters:
     #values: [200_000, 500_000]
     value : 300_000
   eval_interval:
-    value: 2500
+    value: 25_000
   eval_workers:
     value: 8
   eval_final_episodes:
