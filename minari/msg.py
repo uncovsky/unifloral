@@ -223,6 +223,8 @@ def eval_agent(args, rng, env, agent_state):
         # --- Track cumulative reward ---
         done = terminated | truncated
 
+    print("end of ep\n\n")
+    print("cum:", cum_reward)
     return cum_reward
 
 
@@ -563,7 +565,7 @@ def train_msg(args):
         # scores = d4rl.get_normalized_score(args.dataset, returns) * 100.0
 
         agg_fn = lambda x, k: {k: x, f"{k}_mean": x.mean(), f"{k}_std": x.std()}
-        info = agg_fn(rets, "final_returns") | agg_fn(scores, "final_scores")
+        info = agg_fn(scores, "final_returns") | agg_fn(scores, "final_scores")
 
         # --- Write final returns to file ---
         os.makedirs("final_returns", exist_ok=True)
