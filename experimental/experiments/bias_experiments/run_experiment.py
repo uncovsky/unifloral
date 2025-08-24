@@ -1,5 +1,9 @@
-
 from helper_scripts.experiment_utils import load_configs, wandb_sweep_from_config
+
+import os
+
+# prevent jax from prealloc mem
+os.environ["XLA_PYTHON_CLIENT_PREALLOCATE"] = "false"
 
 square_cfg_dir = "experiments/bias_experiments/configs/square-reach"
 
