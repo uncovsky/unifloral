@@ -18,17 +18,20 @@ import optax
 import tyro
 import wandb
 
-from pretraining import make_pretrain_step
+from infra.pretraining import make_pretrain_step
+from infra.offline_dataset_wrapper import OfflineDatasetWrapper
 
 os.environ["XLA_FLAGS"] = "--xla_gpu_triton_gemm_any=True"
+
 
 @dataclass
 class Args:
     # --- Experiment ---
     seed: int = 0
-    dataset: str = "halfcheetah-medium-v2"
-    algorithm: str = "msg"
-    num_updates: int = 1_000_000
+    dataset_source : str = "d4rl"
+    dataset_name: str = "halfcheetah-medium-v2"
+    algorithm: str = "sac_n"
+    num_updates: int = 3_000_000
     eval_interval: int = 2500
     eval_workers: int = 8
     eval_final_episodes: int = 1000
@@ -51,6 +54,10 @@ class Args:
     pretrain_updates : int = 100_000
     pretrain_loss : str = "bc+sarsa"
     pretrain_lag_init: float = 1.0
+    # --- RPF --- 
+    prior: bool = True
+    randomized_prior_depth : int = 3
+    randomized_prior_scale : float = 1.0
 
 
 r"""
@@ -66,7 +73,6 @@ r"""
 AgentTrainState = namedtuple("AgentTrainState", "actor vec_q vec_q_target alpha pretrain_lag")
 Transition = namedtuple("Transition", "obs action reward next_obs next_action done")
 
-
 def sym(scale):
     def _init(*args, **kwargs):
         return uniform(2 * scale)(*args, **kwargs) - scale
@@ -75,32 +81,37 @@ def sym(scale):
 
 
 class SoftQNetwork(nn.Module):
+    depth: int = 3
     @nn.compact
     def __call__(self, obs, action):
-        # [B,S] , [B,A] -> [B,S+A]
         x = jnp.concatenate([obs, action], axis=-1)
-        for _ in range(3):
+        for _ in range(self.depth):
             x = nn.Dense(256, bias_init=constant(0.1))(x)
             x = nn.relu(x)
-        # Small variance for initialization of last layer
         q = nn.Dense(1, kernel_init=sym(3e-3), bias_init=sym(3e-3))(x)
         return q.squeeze(-1)
 
+class RandomizedPriorQNetwork(nn.Module):
+    depth: int 
+    scale: float  
+    @nn.compact
+    def __call__(self, obs, action):
+        q_learnable = SoftQNetwork()(obs, action)
+        prior_net = SoftQNetwork(depth=self.depth, name="prior_q_network")
+        q_prior = prior_net(obs, action)
+        # make sure to not prop grad thru prior net
+        q_prior = jax.lax.stop_gradient(q_prior)
+        # Combine learnable and prior
+        return q_learnable + self.scale * q_prior
 
 class VectorQ(nn.Module):
     num_critics: int
-
     @nn.compact
     def __call__(self, obs, action):
         vmap_critic = nn.vmap(
             SoftQNetwork,
-            variable_axes={
-                "params": 0
-            },  # Parameters not shared between critics
-            split_rngs={
-                "params": True,
-                "dropout": True,
-            },  # Different initializations
+            variable_axes={"params": 0},  # Parameters not shared between critics
+            split_rngs={"params": True, "dropout": True},  # Different initializations
             in_axes=None,
             out_axes=-1,
             axis_size=self.num_critics,
@@ -108,6 +119,22 @@ class VectorQ(nn.Module):
         q_values = vmap_critic()(obs, action)
         return q_values
 
+class PriorVectorQ(nn.Module):
+    num_critics: int
+    depth: int
+    scale: float
+    @nn.compact
+    def __call__(self, obs, action):
+        vmap_critic = nn.vmap(
+            RandomizedPriorQNetwork,
+            variable_axes={"params": 0},  # Parameters not shared between critics
+            split_rngs={"params": True, "dropout": True},  # Different initializations
+            in_axes=None,
+            out_axes=-1,
+            axis_size=self.num_critics,
+        )
+        q_values = vmap_critic(depth=self.depth, scale=self.scale)(obs, action)
+        return q_values
 
 class TanhGaussianActor(nn.Module):
     num_actions: int
@@ -427,9 +454,14 @@ def train(args):
             job_type="train_agent",
         )
 
+    dataset_wrapper = OfflineDatasetWrapper(source=args.dataset_source,
+                                            dataset=args.dataset_name)
+
     # --- Initialize environment and dataset ---
-    env = gym.vector.make(args.dataset, num_envs=args.eval_workers)
-    dataset = d4rl.qlearning_dataset(gym.make(args.dataset))
+    rng, rng_env = jax.random.split(rng)
+    env = dataset_wrapper.get_eval_env(args.eval_workers, rng_env)
+
+    dataset = dataset_wrapper.get_dataset()
     dataset = Transition(
         obs=jnp.array(dataset["observations"]),
         action=jnp.array(dataset["actions"]),
@@ -444,7 +476,17 @@ def train(args):
     dummy_obs = jnp.zeros(env.single_observation_space.shape)
     dummy_action = jnp.zeros(num_actions)
     actor_net = TanhGaussianActor(num_actions)
-    q_net = VectorQ(args.num_critics)
+
+    # --- Init Q, include prior net if enabled ---
+    if args.prior:
+        q_net = PriorVectorQ(
+            num_critics=args.num_critics,
+            depth=args.randomized_prior_depth,
+            scale=args.randomized_prior_scale,
+        )
+    else:
+        q_net = VectorQ(args.num_critics)
+
     alpha_net = EntropyCoef()
 
     # Target networks share seeds to match initialization
@@ -471,11 +513,12 @@ def train(args):
         Pretraining
     """
 
+    assert(args.pretrain_updates <= args.num_updates), \
+            "pretrain_updates must be less than or equal to total updates"
+
     pretrain_evals = args.pretrain_updates // args.eval_interval
 
     if args.pretrain_updates > 0:
-        # pretrain here
-
         for eval_idx in range(pretrain_evals):
 
             (rng, agent_state), loss = jax.lax.scan(
@@ -486,12 +529,15 @@ def train(args):
             )
             # --- Evaluate agent ---
             rng, rng_eval = jax.random.split(rng)
-            returns = eval_agent(args, rng_eval, env, agent_state)
-            scores = d4rl.get_normalized_score(args.dataset, returns) * 100.0
+            # Evaluates on env from get_eval_env
+            returns = dataset_wrapper.eval_agent(args, rng_eval, agent_state)
+            scores = dataset_wrapper.get_normalized_score(returns) * 100.0
 
             # --- Log metrics ---
             step = (eval_idx + 1) * args.eval_interval
             print("Step:", step, f"\t Score: {scores.mean():.2f}")
+            print("Actor loss: ", loss["actor_loss"][-1])
+            print("Critic loss: ", loss["critic_loss"][-1])
 
             if args.log:
                 log_dict = {
@@ -520,11 +566,11 @@ def train(args):
 
         # --- Evaluate agent ---
         rng, rng_eval = jax.random.split(rng)
-        returns = eval_agent(args, rng_eval, env, agent_state)
-        scores = d4rl.get_normalized_score(args.dataset, returns) * 100.0
+        returns = dataset_wrapper.eval_agent(args, rng_eval, agent_state)
+        scores = dataset_wrapper.get_normalized_score(returns) * 100.0
 
         # --- Log metrics ---
-        step = (eval_idx + pretrain_evals + 1) * args.eval_interval
+        step = (eval_idx + 1 + pretrain_evals) * args.eval_interval
         print("Step:", step, f"\t Score: {scores.mean():.2f}")
         if args.log:
             log_dict = {
@@ -541,16 +587,19 @@ def train(args):
         final_iters = int(onp.ceil(args.eval_final_episodes / args.eval_workers))
         print(f"Evaluating final agent for {final_iters} iterations...")
         _rng = jax.random.split(rng, final_iters)
-        rets = onp.concatenate([eval_agent(args, _rng, env, agent_state) for _rng in _rng])
+        rets = onp.concatenate([dataset_wrapper.eval_agent(args, _rng, agent_state) for _rng in _rng])
         env.close()
-        scores = d4rl.get_normalized_score(args.dataset, rets) * 100.0
+        scores = dataset_wrapper.get_normalized_score(rets) * 100.0
         agg_fn = lambda x, k: {k: x, f"{k}_mean": x.mean(), f"{k}_std": x.std()}
         info = agg_fn(rets, "final_returns") | agg_fn(scores, "final_scores")
 
         # --- Write final returns to file ---
         os.makedirs("final_returns", exist_ok=True)
         time_str = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-        filename = f"{args.algorithm}_{args.dataset}_{time_str}.npz"
+
+        filtered_name = args.dataset_name.replace("/", "_").replace("-", "_")
+
+        filename = f"{args.algorithm}_{filtered_name}_{time_str}.npz"
         with open(os.path.join("final_returns", filename), "wb") as f:
             onp.savez_compressed(f, **info, args=asdict(args))
 

@@ -135,20 +135,20 @@ class OfflineDatasetWrapper:
     """
         Eval / Score methods
     """
-    def _initialize_eval_env(self, args, rng):
+    def _initialize_eval_env(self, num_workers, rng):
         rng_actions, rng = jax.random.split(rng)
 
         # Initialize the evaluation env
         if self.source == "d4rl":
             # Create a new environment for evaluation
-            self.eval_env = gym.vector.make(self.dataset_name, num_envs=args.eval_workers)
+            self.eval_env = gym.vector.make(self.dataset_name, num_envs=num_workers)
             return 
 
         # Else minari
         else:
             self.eval_env = gymn.vector.AsyncVectorEnv([
                 lambda: self._minari_dataset.recover_environment(eval_env=True) \
-                        for _ in range(args.eval_workers)
+                        for _ in range(num_workers)
             ])
 
         self.eval_env.action_space.seed(rng_to_integer_seed(rng_actions))
@@ -182,7 +182,7 @@ class OfflineDatasetWrapper:
 
             )
 
-    def evaluate_agent(self, args, rng, agent_state):
+    def eval_agent(self, args, rng, agent_state):
         """
             Evaluates the agent on eval_env for the dataset. For d4rl this env
             is newly created, for minari we recover eval_env from minari

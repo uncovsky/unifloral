@@ -74,7 +74,7 @@ def test_d4rl():
 
     # Get dataset and eval env
     dataset = wrap.get_dataset()
-    eval_env = wrap.get_eval_env(args, rng_env_init)
+    eval_env = wrap.get_eval_env(args.eval_workers, rng_env_init)
 
     dataset = Transition(
         obs=jnp.array(dataset["observations"]),
@@ -114,7 +114,7 @@ def test_d4rl():
 
 
     # Test evaluation
-    returns = wrap.evaluate_agent(args, rng, agent_state)
+    returns = wrap.eval_agent(args, rng, agent_state)
     scores = wrap.get_normalized_score(returns) * 100.0
     print("Evaluation returns:", returns)
     print("Evaluation scores:", scores)
@@ -133,7 +133,7 @@ def test_minari(name):
     minari_dataset = wrap.get_minari_dataset()
     assert(minari_dataset is not None)
 
-    eval_env = wrap.get_eval_env(args, rng_env_init)
+    eval_env = wrap.get_eval_env(args.eval_workers, rng_env_init)
 
     dataset = Transition(
         obs=jnp.array(dataset["observations"]),
@@ -171,7 +171,7 @@ def test_minari(name):
         assert(len(score) == len(returns))
 
     # Test evaluation
-    returns = wrap.evaluate_agent(args, rng, agent_state)
+    returns = wrap.eval_agent(args, rng, agent_state)
     scores = wrap.get_normalized_score(returns) * 100.0
     print("Evaluation returns:", returns)
     print("Evaluation scores:", scores)
