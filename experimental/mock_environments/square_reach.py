@@ -104,7 +104,7 @@ class SquareReachEnv(gym.Env):
     def close(self):
         pass
 
-    def plot_trajectories(self):
+    def plot_trajectories(self, directory="figures/images/"):
 
         plt.figure(figsize=(6, 6))
         plt.xlim(0, 1)
@@ -125,4 +125,5 @@ class SquareReachEnv(gym.Env):
         plt.legend()
         plt.grid()
 
-        plt.savefig(f"square_horizon={self.H}_trajs.png")
+        os.makedirs(directory, exist_ok=True)
+        plt.savefig(f"{directory}square_horizon={self.H}_trajs.png")
