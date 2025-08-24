@@ -54,6 +54,17 @@ def pretrain_loss_factory(args, actor_apply_fn, q_apply_fn, alpha_apply_fn):
 
         return _vmapped_loss(agent_state.actor.params, rng, batch)
 
+
+    def noop_actor_loss(agent_state, rng, batch):
+        """
+        No-op actor loss, used for pretraining with no actor updates.
+        """
+        @partial(jax.value_and_grad, argnums=0)
+        def _noop_loss_fn(actor_params, rng, batch):
+            return jnp.zeros((1,))
+
+        return _noop_loss_fn(agent_state.actor.params, rng, batch)
+
     """ 
         Critic losses
     """
@@ -144,6 +155,9 @@ def pretrain_loss_factory(args, actor_apply_fn, q_apply_fn, alpha_apply_fn):
             "bc+sarsa": (soft_bc_loss, sarsa_loss),
             "bc+sarsa-cql": (soft_bc_loss, sarsa_cql_loss),
             "bc+sarsa-edac": (soft_bc_loss, sarsa_edac_loss),
+            "none+sarsa": (noop_actor_loss, sarsa_loss),
+            "none+sarsa-cql": (noop_actor_loss, sarsa_cql_loss),
+            "none+sarsa-edac": (noop_actor_loss, sarsa_edac_loss),
     }
 
     if args.pretrain_loss in loss_dict:
