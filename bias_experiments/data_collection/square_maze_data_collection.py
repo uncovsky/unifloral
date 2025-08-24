@@ -21,7 +21,7 @@ def collect_dataset(H, episodes=1000, seed=0):
         done = False
         t = 0
 
-        # act randomly for first two steps, then deterministically navigate to goal
+        # act randomly for first steps, then deterministically navigate to goal
         random_steps = min(H // 5, 5)
 
         while not done:
