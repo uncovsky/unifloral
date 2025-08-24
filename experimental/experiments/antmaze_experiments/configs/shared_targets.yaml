@@ -56,7 +56,11 @@ parameters:
   pretrain_loss:
     values:
       - "bc+sarsa"
-      - "bc+sarsa-cql"
+  pretrain_steps:
+    values:
+      - 0
+      - 200_000
+
   prior:
     values:
       - true
