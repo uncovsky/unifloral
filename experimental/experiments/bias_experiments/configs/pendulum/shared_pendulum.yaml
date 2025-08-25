@@ -12,7 +12,9 @@ parameters:
   # --- Experiment ---
   seed:
     value : 0 
-  dataset:
+  dataset-source:
+    value: minari
+  dataset-name:
     values: [pendulum/gaussian-v0, pendulum/uniform-v0, pendulum/mixture-v0]
   algorithm:
     value: sac_n
