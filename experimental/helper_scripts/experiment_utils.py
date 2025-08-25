@@ -95,3 +95,15 @@ def wandb_sweep_from_config(config,
     print(f"Sweep created for {algo_name} with id: {sweep_id}, steps: {steps}")
     wandb.agent(sweep_id, function=None, count=run_limit)
     # blocks until agent terminates
+
+
+def sweep_folder(dirname, entity, project):
+    # Run all sweeps in the specified directory (blocking)
+    configs = load_configs(dirname)
+    for config in configs:
+        wandb_sweep_from_config(
+            config,
+            project=project,
+            entity=entity
+        )
+
