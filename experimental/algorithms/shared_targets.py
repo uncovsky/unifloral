@@ -9,6 +9,7 @@ import distrax
 import d4rl
 import flax.linen as nn
 from flax.linen.initializers import constant, uniform
+from flax.training import checkpoints
 from flax.training.train_state import TrainState
 import gym
 import jax
@@ -23,6 +24,28 @@ from infra.offline_dataset_wrapper import OfflineDatasetWrapper
 
 os.environ["XLA_FLAGS"] = "--xla_gpu_triton_gemm_any=True"
 
+"""
+    Checkpointing
+"""
+
+def create_checkpoint_dir():
+    time_str = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    dir_name = f"{args.algorithm}_{args.dataset.replace('/', '.')}/{time_str}"
+    ckpt_dir = os.path.join("./checkpoints", dir_name)
+    ckpt_dir = os.path.abspath(ckpt_dir)
+    os.makedirs(ckpt_dir, exist_ok=True)
+
+    # Save args to JSON inside the checkpoint dir
+    args_path = os.path.join(ckpt_dir, "args.json")
+    with open(args_path, "w") as f:
+        json.dump(asdict(args), f, indent=2)
+
+    return ckpt_dir
+
+def save_train_state(train_state, ckpt_dir, step):
+    checkpoints.save_checkpoint(ckpt_dir, target=train_state, step=step)
+    print(f"Checkpoint saved at step {step} in {ckpt_dir}")
+
 
 @dataclass
 class Args:
@@ -35,6 +58,7 @@ class Args:
     eval_interval: int = 2500
     eval_workers: int = 8
     eval_final_episodes: int = 1000
+    checkpoint : bool = False
     # --- Logging ---
     log: bool = False
     wandb_project: str = "unifloral"
@@ -443,6 +467,10 @@ def train(args):
                 }
                 wandb.log(log_dict)
 
+    if args.checkpoint:
+        ckpt_dir = create_checkpoint_dir()
+        save_train_state(agent_state, ckpt_dir, pretrain_evals)
+
     num_evals = (args.num_updates - args.pretrain_updates) // args.eval_interval
 
     """
@@ -475,6 +503,9 @@ def train(args):
                 **{k: loss[k][-1] for k in loss},
             }
             wandb.log(log_dict)
+
+    if args.checkpoint:
+        save_train_state(agent_state, ckpt_dir, num_evals + pretrain_evals)
 
     # --- Evaluate final agent ---
     if args.eval_final_episodes > 0:
