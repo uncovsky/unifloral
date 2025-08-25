@@ -4,32 +4,32 @@ command:
   - ${args_no_boolean_flags}
 entity: ahoj
 method: grid
-name: SAC-N
-program: minari/sac_n.py
-project: pendulum-sac-n
+name: shared_targets
+program: algorithms/shared_targets.py
+project: pendulum-shared
 
 parameters:
   # --- Experiment ---
   seed:
-    values: [0, 1]
+    value : 0 
   dataset:
     values: [pendulum/gaussian-v0, pendulum/uniform-v0, pendulum/mixture-v0]
   algorithm:
     value: sac_n
   num_updates:
-    values: [50_000, 100_000]
+    value: 200_000
   eval_interval:
     value: 2500
   eval_workers:
-    value: 1
+    value: 8
   eval_final_episodes:
-    value: 0
+    value: 128
 
   # --- Logging ---
   log:
     value: true
   wandb_project:
-    value: pendulum-sac-n
+    value: pendulum-shared
   wandb_team:
     value: ahoj
   wandb_group:

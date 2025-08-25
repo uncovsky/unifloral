@@ -5,25 +5,27 @@ command:
 entity: ahoj
 method: grid
 name: CQL
-program: minari/cql.py
+program: algorithms/cql.py
 project: pendulum-cql
 
 parameters:
   # --- Experiment ---
   seed:
-    values: [0, 1]
+    value : 0
   dataset:
     values: [pendulum/gaussian-v0, pendulum/uniform-v0, pendulum/mixture-v0]
   algorithm:
     value: cql
   num_updates:
-    values: [50_000, 100_000]
+    value: 200_000
   eval_interval:
-    value: 2500
+    value: 10_000
   eval_workers:
-    value: 1
+    value: 8
   eval_final_episodes:
-    value: 0
+    value: 128
+  checkpoint:
+    value: true
 
   # --- Logging ---
   log:
@@ -55,4 +57,9 @@ parameters:
   cql_temperature:
     value: 1.0
   cql_min_q_weight:
-    values: [5.0, 10.0, 20.0]
+    values: [0.0, 10.0, 20.0] # Test large coeffs.
+
+  # --- Experimental ---
+  pretrain_updates:
+    value: 0
+    
