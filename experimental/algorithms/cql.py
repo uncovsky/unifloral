@@ -34,7 +34,7 @@ os.environ["XLA_FLAGS"] = "--xla_gpu_triton_gemm_any=True"
 
 def create_checkpoint_dir():
     time_str = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-    dir_name = f"{args.algorithm}_{args.dataset.replace('/', '.')}/{time_str}"
+    dir_name = f"{args.algorithm}_{args.dataset_name.replace('/', '.')}/{time_str}"
     ckpt_dir = os.path.join("./checkpoints", dir_name)
     ckpt_dir = os.path.abspath(ckpt_dir)
     os.makedirs(ckpt_dir, exist_ok=True)
