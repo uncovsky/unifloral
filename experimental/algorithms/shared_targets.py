@@ -14,6 +14,7 @@ from flax.training.train_state import TrainState
 import gym
 import jax
 import jax.numpy as jnp
+import json
 import numpy as onp
 import optax
 import tyro

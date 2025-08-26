@@ -21,11 +21,13 @@ parameters:
   num_updates:
     value: 200_000
   eval_interval:
-    value: 2500
+    value: 10_000
   eval_workers:
     value: 8
   eval_final_episodes:
     value: 128
+  checkpoint:
+    value: true
 
   # --- Logging ---
   log:
