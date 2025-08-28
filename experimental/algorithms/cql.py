@@ -389,7 +389,6 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset):
         updated_q = agent_state.vec_q.apply_gradients(grads=critic_grad)
         agent_state = agent_state._replace(vec_q=updated_q)
 
-        bias_estimates = get_bias_estimates(rng, agent_state.vec_q.params, variances)
         loss = {
             "critic_loss": critic_loss,
             "actor_loss": actor_loss,
