@@ -18,7 +18,7 @@ class SquareReachEnv(gym.Env):
         The action space is (-1, 1) which is mappe to angle in pi radians,
         movement is deterministic.
 
-        Horizon is controllable (inversely proportional to the step size).
+        Horizon is controllable (inversely proportional to the step size)
     """
 
     metadata = {"render_modes": ["human"], "render_fps": 10}
@@ -30,12 +30,13 @@ class SquareReachEnv(gym.Env):
         self.step_size = np.sqrt(2) / H
         self.render_mode = render_mode
 
-        # Observation: 2D position
+        # state + goal
         self.observation_space = spaces.Box(
-            low=np.array([0.0, 0.0], dtype=np.float32),
-            high=np.array([1.0, 1.0], dtype=np.float32),
-            dtype=np.float32,
+            low=np.array([0.0, 0.0, 0.0, 0.0], dtype=np.float32),
+            high=np.array([1.0, 1.0, 1.0, 1.0], dtype=np.float32),
+            dtype=np.float32
         )
+
 
         # Action: scalar in (-1, 1) mapped to (-pi, pi)
         self.action_space = spaces.Box(
@@ -55,6 +56,9 @@ class SquareReachEnv(gym.Env):
 
         self.trajectories_limit = 10
 
+    def add_goal_to_state(self, state):
+        return np.concatenate([state, self.goal], axis=-1)
+
     def reset(self, *, seed=None, options=None):
         super().reset(seed=seed)
         self.state = np.array([0.0, 0.0], dtype=np.float32)
@@ -64,7 +68,7 @@ class SquareReachEnv(gym.Env):
             self.trajectories.append(self.current_trajectory)
         self.current_trajectory = []
 
-        return self.state.copy(), {}
+        return self.add_goal_to_state(self.state), {}
 
     def step(self, action):
 
@@ -90,7 +94,10 @@ class SquareReachEnv(gym.Env):
         # truncate on three times the effective horizon
         truncated = self.t >= 3 * self.H
 
-        return self.state.copy(), reward, terminated, truncated, {}
+        observation = self.add_goal_to_state(self.state)
+        info = {"distance_to_goal": dist_to_goal}
+
+        return observation, reward, terminated, truncated, info
 
     def render(self):
         if self.render_mode == "human":
