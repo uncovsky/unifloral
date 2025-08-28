@@ -390,58 +390,6 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset):
         updated_q = agent_state.vec_q.apply_gradients(grads=critic_grad)
         agent_state = agent_state._replace(vec_q=updated_q)
 
-        def get_bias_estimates(rng, params, variances):
-
-            rng, rng_q = jax.random.split(rng)
-            rng_q = jax.random.split(rng_q, variances.shape[0])  # Shape: (n,)
-            
-
-            # Calculate original Q-values (batch shape: (n, ...))
-            q_pred = q_apply_fn(agent_state.vec_q.params, batch.obs, batch.action)
-
-
-            def _perturb_q_values(rng, obs, actions, noise_variance):
-                # Sample noise from [-var, var]
-                eps = jax.random.uniform(
-                    rng,
-                    shape=actions.shape,
-                    minval=-noise_variance,
-                    maxval=+noise_variance,
-                )
-
-                # Perturb and clip actions
-                perturbed_action = actions + eps
-                perturbed_action = jnp.clip(perturbed_action, -1.0, 1.0)
-
-                perturbed_q = q_apply_fn(
-                    params, obs, perturbed_action
-                )
-
-                return perturbed_q
-
-            # Broadcast variances to (n, 1) before vmap
-            variances = variances[:, None]
-
-            perturbed_q_curr = jax.vmap(
-                _perturb_q_values, in_axes=(0, None, None, 0)
-            )(rng_q, batch.obs, batch.action, variances)
-
-            # ood penalty (shape (var, ) mean penalty for each coeff)
-            penalty = (args.actor_lcb_coef * perturbed_q_curr.std(-1)).mean(-1)
-
-            # calculate Q-gap between perturbed and original Q-values for each critic
-            q_gap = jnp.mean(perturbed_q_curr - jnp.expand_dims(q_pred, axis=0), axis=(1,2))
-            
-
-            return q_gap, penalty
-
-        num_perturbations = 3
-        # Perturb actions from support
-        variances = jnp.linspace(0.1, 0.3, num_perturbations) 
-
-        # lol
-        variances_py = [0.1, 0.2, 0.3]
-        bias_estimates, penalties = get_bias_estimates(rng, agent_state.vec_q.params, variances)
         loss = {
             "critic_loss": critic_loss,
             "actor_loss": actor_loss,
@@ -453,12 +401,7 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset):
             "q_pred_std": q_pred_std,
             "pi_q_mean": pi_q_mean,
             "pi_q_std": pi_q_std
-}
-
-        # Add pessimism
-        for i, var in enumerate(variances_py):
-            loss[f"bias_estimate_{var}"] = bias_estimates[i].astype(float)
-            loss[f"penalty_{var}"] = penalties[i].astype(float)
+        }
 
         return (rng, agent_state), loss
 
