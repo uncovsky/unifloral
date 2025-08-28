@@ -9,8 +9,8 @@ from data_collection.square_maze_data_collection import collect_dataset
 if __name__ == "__main__":
 
     print("Collecting data for Square Maze...")
-    horizons = [10, 20, 50]
-    dataset_episodes = 500
+    horizons = [5, 10, 15]
+    dataset_episodes = 1000
     square_maze_seed = 42
 
     for H in horizons:

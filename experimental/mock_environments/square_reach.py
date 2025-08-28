@@ -3,6 +3,8 @@ from gymnasium import spaces
 from gymnasium.envs.registration import register
 import matplotlib.pyplot as plt
 import numpy as np
+import os
+
 
 class SquareReachEnv(gym.Env):
 
@@ -85,8 +87,8 @@ class SquareReachEnv(gym.Env):
         
         reward = 1.0 if terminated else 0.0
 
-        # truncate on double the effective horizon
-        truncated = self.t >= 2 * self.H
+        # truncate on three times the effective horizon
+        truncated = self.t >= 3 * self.H
 
         return self.state.copy(), reward, terminated, truncated, {}
 

@@ -4,35 +4,35 @@ command:
   - ${args_no_boolean_flags}
 entity: ahoj
 method: grid
-name: shared_targets 
-program: algorithms/shared_targets.py
-project: square-shared-targets
+name: independent_targets
+program: algorithms/independent_targets.py
+project: square-independent-targets
 
 parameters:
   # --- Experiment ---
   seed:
-    values: [0,1,2]
+    values: [0, 1]
   dataset-source:
     value: minari
   dataset-name:
-    values: [square-reach/horizon-5-v0, square-reach/horizon-10-v0, square-reach/horizon-15-v0]
+    values: [square-reach/horizon-10-v0, square-reach/horizon-20-v0, square-reach/horizon-50-v0]
   algorithm:
-    value: shared-targets
+    value: independent_targets
   num_updates:
     #values: [200_000, 500_000]
-    value : 250_000
+    value : 300_000
   eval_interval:
     value: 25_000
   eval_workers:
     value: 8
   eval_final_episodes:
-    value: 4000
+    value: 128
 
   # --- Logging ---
   log:
     value: true
   wandb_project:
-    value: square-sac-n
+    value: square-msg
   wandb_team:
     value: ahoj
   wandb_group:
@@ -40,7 +40,7 @@ parameters:
 
   # --- Generic optimization ---
   lr:
-    value: 0.0003
+    value: 3e-4
   batch_size:
     value: 256
   gamma:
@@ -50,4 +50,10 @@ parameters:
 
   # --- SAC-N ---
   num_critics:
-    values: [2, 10] # 500 and 1000 have high GPU memory usage
+    value: 10
+
+  # --- MSG ---
+  cql_min_q_weight: 
+    values : [0.1, 0.3]
+  actor_lcb_coef : 
+    values : [4.0]

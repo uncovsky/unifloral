@@ -22,7 +22,7 @@ def collect_dataset(H, episodes=1000, seed=0):
         t = 0
 
         # act randomly for first steps, then deterministically navigate to goal
-        random_steps = min(H // 5, 5)
+        random_steps = min(H // 5, 2)
 
         while not done:
             if t < random_steps:
@@ -41,6 +41,9 @@ def collect_dataset(H, episodes=1000, seed=0):
             obs = next_obs
             done = terminated or truncated
             t += 1
+
+
+    print("Final transition: ", dataset[-1])
 
     # save plot of first 10 trajectories
     env.unwrapped.plot_trajectories()

@@ -11,22 +11,22 @@ project: square-independent-targets
 parameters:
   # --- Experiment ---
   seed:
-    values: [0, 1]
+    values: [0, 1, 2]
   dataset-source:
     value: minari
   dataset-name:
-    values: [square-reach/horizon-10-v0, square-reach/horizon-20-v0, square-reach/horizon-50-v0]
+    values: [square-reach/horizon-5-v0, square-reach/horizon-10-v0, square-reach/horizon-15-v0]
   algorithm:
     value: independent_targets
   num_updates:
     #values: [200_000, 500_000]
-    value : 300_000
+    value : 250_000
   eval_interval:
     value: 25_000
   eval_workers:
     value: 8
   eval_final_episodes:
-    value: 128
+    value: 4000
 
   # --- Logging ---
   log:
@@ -54,6 +54,6 @@ parameters:
 
   # --- MSG ---
   cql_min_q_weight: 
-    values : [0.1, 0.3]
+    values : [0.05, 0.1]
   actor_lcb_coef : 
     values : [4.0]
