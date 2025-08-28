@@ -11,7 +11,7 @@ project: square-shared-targets
 parameters:
   # --- Experiment ---
   seed:
-    values: [0, 1]
+    values: [0, 1, 2, 3, 4]
   dataset-source:
     value: minari
   dataset-name:
@@ -20,13 +20,13 @@ parameters:
     value: shared_targets
   num_updates:
     #values: [200_000, 500_000]
-    value : 300_000
+    value : 250_000
   eval_interval:
     value: 25_000
   eval_workers:
     value: 8
   eval_final_episodes:
-    value: 128
+    value: 4000
 
   # --- Logging ---
   log:
@@ -50,4 +50,4 @@ parameters:
 
   # --- SAC-N ---
   num_critics:
-    values: [10, 30]  # 500 and 1000 have high GPU memory usage
+    values: [2, 10] # 500 and 1000 have high GPU memory usage

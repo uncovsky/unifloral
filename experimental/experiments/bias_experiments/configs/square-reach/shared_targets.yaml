@@ -4,7 +4,7 @@ command:
   - ${args_no_boolean_flags}
 entity: ahoj
 method: grid
-name: shared_targets 
+name: shared_targets
 program: algorithms/shared_targets.py
 project: square-shared-targets
 
@@ -17,7 +17,7 @@ parameters:
   dataset-name:
     values: [square-reach/horizon-5-v0, square-reach/horizon-10-v0, square-reach/horizon-15-v0]
   algorithm:
-    value: shared-targets
+    value: shared_targets
   num_updates:
     #values: [200_000, 500_000]
     value : 100_000
@@ -32,7 +32,7 @@ parameters:
   log:
     value: true
   wandb_project:
-    value: square-sac-n
+    value: square-msg
   wandb_team:
     value: ahoj
   wandb_group:
@@ -40,14 +40,20 @@ parameters:
 
   # --- Generic optimization ---
   lr:
-    value: 0.0003
+    value: 3e-4
   batch_size:
     value: 256
   gamma:
-    value: 0.99
+    value: 0.999
   polyak_step_size:
     value: 0.005
 
   # --- SAC-N ---
   num_critics:
-    values: [2, 10] # 500 and 1000 have high GPU memory usage
+    value: 10
+
+  # --- MSG ---
+  cql_min_q_weight: 
+    values : [0.05, 0.1]
+  actor_lcb_coef : 
+    values : [4.0]
