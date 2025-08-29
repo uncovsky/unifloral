@@ -26,7 +26,7 @@ parameters:
   eval_workers:
     value: 8
   eval_final_episodes:
-    value: 4000
+    value: 1000
 
   # --- Logging ---
   log:
