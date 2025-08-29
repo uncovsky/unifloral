@@ -69,8 +69,9 @@ def collect_agent_dataset(env, agent, dataset_size, dataset_name, seed=42):
         step += 1
 
         if terminated or truncated:
-            obs, _ = env.reset()
-
+            # Force same starting state in every ep
+            obs, _ = env.reset(seed=seed)
+            print("starting", obs)
     now = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 
     dataset_id = f"pendulum/{dataset_name}"
@@ -83,6 +84,7 @@ def collect_agent_dataset(env, agent, dataset_size, dataset_name, seed=42):
         author=author,
         description=f"Collected by trained agent on Pendulum-v1, seed {seed}.",
     )
+
 
     print("Created dataset with ID:", dataset_id)
 
@@ -108,7 +110,8 @@ def collect_uniform_dataset(env, first_state_policy, dataset_size,
         step += 1
 
         if terminated or truncated:
-            obs, _ = env.reset()
+            obs, _ = env.reset(seed=seed)
+            print("starting", obs)
             action = first_state_policy(obs)
 
 

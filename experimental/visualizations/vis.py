@@ -7,57 +7,8 @@ from datetime import datetime
 import re
 import seaborn as sns
 
-def parse_and_load_npz(filename: str) -> dict:
-    """Load data from a result file and parse metadata from filename.
 
-    Args:
-        filename: Path to the .npz result file
-
-    Returns:
-        Dictionary containing loaded arrays and metadata
-    """
-
-    data = np.load(filename, allow_pickle=True)
-    data = {k: v for k, v in data.items()}
-    data.update(data.pop("args", np.array({})).item())  # Flatten args
-    return data
-
-
-
-
-def parse_folder(folder: str) -> pd.DataFrame:
-    """Parse all .npz files in a folder and compile into a DataFrame.
-
-    Args:
-        folder: Path to the folder containing .npz files
-
-    Returns:
-        DataFrame with parsed data and metadata
-    """
-
-    records = []
-    for file in os.listdir(folder):
-        print(file)
-        if file.endswith(".npz"):
-            filepath = os.path.join(folder, file)
-            try:
-                record = parse_and_load_npz(filepath)
-                records.append(record)
-            except Exception as e:
-                print(f"Error parsing {file}: {e}")
-
-
-    df = pd.DataFrame(records)
-
-    if df.empty:
-        print("No valid .npz files found.")
-        return df
-
-    # drop columns starting with wandb, or including eval
-    df = df[[col for col in df.columns if not (col.startswith("wandb") or "eval" in col)]]
-
-    return df
-
+from vis_utils import parse_and_load_npz, parse_folder
 
 
 def process_square_reach_data(df: pd.DataFrame):
@@ -69,8 +20,8 @@ def process_square_reach_data(df: pd.DataFrame):
 
     params = {}
     params["cql"] = cql_params
-    params["shared-targets"] = shared_params
-    params["independent-targets"] = independent_params
+    params["shared_targets"] = shared_params
+    params["independent_targets"] = independent_params
 
     fig, ax = plt.subplots(figsize=(10, 6))
 
@@ -103,8 +54,11 @@ def process_square_reach_data(df: pd.DataFrame):
             continue
         
         algo_df = df[df['algorithm'] == algo]
-        print(f"Processing {algo}, {len(algo_df)} entries")
         hyperparams = params[algo]
+
+        # Remove duplicit runs logged with same hyperparams, seed, etc.
+        algo_df = algo_df.drop_duplicates(subset=hyperparams + ['dataset_name', 'seed'])
+        print(f"Processing {algo}, {len(algo_df)} entries")
 
         grouped = (
             algo_df.groupby(hyperparams + ['dataset_name'])
@@ -194,39 +148,32 @@ def make_square_reach_lineplot(df: pd.DataFrame):
 
 def make_square_reach_heatmap(df: pd.DataFrame):
 
-    # Identify horizon columns
     horizon_cols = sorted([col for col in df.columns if col not in ['description', 'algorithm']])
     
-    # Create directory if it doesn't exist
     os.makedirs("figures", exist_ok=True)
     
-    # Prepare data: descriptions as rows
     heatmap_data = df.set_index('description')[horizon_cols]
     
-    # Plot heatmap
-    plt.figure(figsize=(10, max(6, len(df)*0.5)))  # scale height by number of rows
+    plt.figure(figsize=(10, max(6, len(df)*0.5)))
     sns.heatmap(
         heatmap_data,
         annot=True,
         fmt=".3f",
-        cmap=sns.color_palette("Blues", as_cmap=True),  # light blue → dark blue
+        cmap=sns.color_palette("Blues", as_cmap=True), 
         cbar_kws={'label': 'Mean return'},
         linewidths=0.5,
         linecolor='white',
-        xticklabels=False  # hide horizon text
+        xticklabels=False
     )
     plt.title("Mean Return per Description and Horizon", fontsize=14)
     plt.xlabel("Horizon", fontsize=12)
     plt.ylabel("Description", fontsize=12)
     plt.tight_layout()
-    
-    # Save figure
     plt.savefig("figures/heatmap_descriptions_horizons.png", dpi=300)
     plt.close()
 
 
 if __name__ == "__main__":
-    res = parse_folder("../results/square_reach_conditioned_updated/")
-    # print algorithm name of nonzero final_returns_mean
+    res = parse_folder("../results/square_long_horizon/")
     df = process_square_reach_data(res)
     make_square_reach_figures(df)
