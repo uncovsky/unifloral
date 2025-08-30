@@ -179,9 +179,10 @@ class TanhGaussianActor(nn.Module):
         )(x)
         std = jnp.exp(jnp.clip(log_std, self.log_std_min, self.log_std_max))
         mean = nn.Dense(self.num_actions, kernel_init=sym(1e-3), bias_init=sym(1e-3))(x)
+
         pi = distrax.Transformed(
             distrax.Normal(mean, std),
-            distrax.Tanh(),
+            distrax.Tanh()
         )
         return pi
 
@@ -362,7 +363,7 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset):
         pi_next_actions = _sample_actions(rng_next, batch.next_obs)
         rng, rng_random = jax.random.split(rng)
         cql_random_actions = jax.random.uniform(
-            rng_random, shape=batch.action.shape, minval=-1.0, maxval=1.0
+            rng_random, shape=batch.action.shape, minval=-2.0, maxval=2.0
         )
 
         # --- Update critics ---

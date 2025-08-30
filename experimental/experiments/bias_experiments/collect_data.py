@@ -15,6 +15,7 @@ if __name__ == "__main__":
 
     for H in horizons:
         print(f"Collecting dataset for horizon = {H}...")
+        continue
         collect_dataset(H=H, steps=dataset_size, seed=square_maze_seed)
 
     print("Collecting data for Pendulum-v1...")
