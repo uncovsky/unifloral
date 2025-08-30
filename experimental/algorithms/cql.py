@@ -166,20 +166,34 @@ class PriorVectorQ(nn.Module):
 
 class TanhGaussianActor(nn.Module):
     num_actions: int
+    fixed_params: bool = False
     log_std_max: float = 2.0
     log_std_min: float = -5.0
     action_scale: float = 1.0
 
     @nn.compact
     def __call__(self, x):
-        for _ in range(3):
-            x = nn.Dense(256, bias_init=constant(0.1))(x)
-            x = nn.relu(x)
-        log_std = nn.Dense(
-            self.num_actions, kernel_init=sym(1e-3), bias_init=sym(1e-3)
-        )(x)
-        std = jnp.exp(jnp.clip(log_std, self.log_std_min, self.log_std_max))
-        mean = nn.Dense(self.num_actions, kernel_init=sym(1e-3), bias_init=sym(1e-3))(x)
+
+        # yikes
+        if self.fixed_params:
+            if x.ndim == 1:
+                mean = jnp.full((self.num_actions, ), 0.0)
+                std = jnp.full((self.num_actions,), 0.1)
+            else:
+                batch_size = x.shape[0]
+                mean = jnp.full((batch_size, self.num_actions), 0.0)
+                std = jnp.full((batch_size, self.num_actions), 0.1)
+
+        else:
+            for _ in range(3):
+                x = nn.Dense(256, bias_init=constant(0.1))(x)
+                x = nn.relu(x)
+            log_std = nn.Dense(
+                self.num_actions, kernel_init=sym(1e-3), bias_init=sym(1e-3)
+            )(x)
+            std = jnp.exp(jnp.clip(log_std, self.log_std_min, self.log_std_max))
+            mean = nn.Dense(self.num_actions, kernel_init=sym(1e-3), bias_init=sym(1e-3))(x)
+
 
         bijectors = distrax.Chain([
             distrax.Tanh(), 

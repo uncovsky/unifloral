@@ -334,6 +334,17 @@ def eval_agent_gymnasium(args, rng, env, agent_state):
 
     seeds_reset = [rng_to_integer_seed(rng) for rng in rng_reset]
     obs, _ = env.reset(seed=seeds_reset)
+    """
+    seeds_reset = [ 42 for rng in rng_reset ]
+    obs, _ = env.reset(seed=seeds_reset)
+
+    num_samples = 100
+
+    actions = jnp.linspace(-2, 2, num_samples).reshape(-1, 1)
+    rep_obs = jnp.repeat(jnp.array(obs[0, :]).reshape(1, -1), num_samples, axis=0)
+
+    print(agent_state.vec_q.apply_fn(agent_state.vec_q.params, rep_obs, actions))
+    """
 
     # --- Rollout agent ---
     @jax.jit
