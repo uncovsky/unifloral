@@ -12,7 +12,10 @@ from flax import linen as nn
 import matplotlib.pyplot as plt
 import minari
 import numpy as np
+import random
+import seaborn as sns
 import os
+
 
 # algorithm-specific hyperparameters
 cql_params = ['cql_temperature', 'cql_min_q_weight']
@@ -109,7 +112,7 @@ def get_q_value_data(directory, num_samples):
     # Get results for different initial policies
     policy_folders = [f.path for f in os.scandir(directory) if f.is_dir()]
 
-    initial_obs = gym.make("Pendulum-v1").reset()[0]
+    initial_obs = gym.make("Pendulum-v1").reset(seed=42)[0]
     action_samples = np.linspace(-2, 2, num_samples).reshape(-1, 1).astype(np.float32)
     obs = jnp.repeat(jnp.array(initial_obs).reshape(1, -1), num_samples, axis=0)
 
@@ -159,38 +162,61 @@ def get_q_value_data(directory, num_samples):
                 
                 results[arg_str] = q_values
 
-        print(policy_name)
 
-        # plot action on x axis and q-values on y
-        plt.figure(figsize=(10, 6))
+
+        sample_policy = gaussian_mixture_policy if policy_name == "gaussian" else (
+                        uniform_mixture_policy if policy_name == "mixture" else uniform_policy) 
+
+        policy_samples = np.concatenate([ sample_policy(None) for _ in range(num_samples * 10)], axis=0)
+
+
+        def overlay_kde_seaborn_center(ax, samples, frac=0.3, bw_adjust=0.5, linewidth=2.5, linestyle="--", color="black", label=None):
+            """
+            Overlay a smooth KDE using seaborn, anchored at the vertical midpoint of the y-axis.
+            - frac: fraction of y-range to occupy
+            - bw_adjust: bandwidth adjustment (smaller=bumpier, larger=smoother)
+            """
+            # Fit KDE with Seaborn
+            kde = sns.kdeplot(samples, bw_adjust=bw_adjust, ax=ax, fill=False, legend=False)
+
+            # Extract line data from the plot
+            line = ax.lines[-1]
+            xs = line.get_xdata()
+            ys = line.get_ydata()
+
+            # Remove the line added by seaborn
+            line.remove()
+
+            # Normalize and scale
+            ymin, ymax = ax.get_ylim()
+            ymid = 0.5 * (ymin + ymax)
+            yrange = ymax - ymin
+            scale = frac * yrange
+            ys_scaled = ymid + ys / ys.max() * scale  # only extend upward from midpoint
+
+            ax.plot(xs, ys_scaled, linewidth=linewidth, linestyle=linestyle, color=color, label=label, zorder=1)
+
+
+        fig, ax = plt.subplots(figsize=(10, 6))
+
         for label, q_vals in results.items():
-            plt.plot(action_samples, q_vals, label=label)
-        plt.xlabel("Action")
-        plt.ylabel("Q-value")
-        plt.title(f"Q-value estimates for different agents, initial policy: {policy_name}")
-        plt.legend()
+            ax.plot(action_samples, q_vals, label=label)
+        overlay_kde_seaborn_center(ax, policy_samples,
+                                   frac=0.3, bw_adjust=0.5,
+                                   linewidth=2.5, linestyle="--",
+                                   color="black",
+                                   label="Policy KDE")
+
+        ax.set_xlabel("Action")
+        ax.set_ylabel("Q-value")
+        ax.set_xlim(-2, 2)
+        ax.legend()
         plt.show()
-
-
-
-
-
-
-
-
-
-
-                    
-
-
-
-
-
 
 
 
 AgentTrainState = namedtuple("AgentTrainState", "actor vec_q vec_q_target alpha pretrain_lag")
 
-get_q_value_data("../results/pendulum_checkpoints", 1000)
+get_q_value_data("../results/updated_checkpoints_pendulum", 1000)
 
 
