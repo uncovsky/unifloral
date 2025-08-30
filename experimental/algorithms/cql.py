@@ -274,7 +274,7 @@ r"""
 """
 
 
-def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset):
+def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset, action_scale):
     """Make JIT-compatible agent train step."""
 
     def _train_step(runner_state, _):
@@ -368,9 +368,10 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset):
         pi_actions = _sample_actions(rng_pi, batch.obs)
         pi_next_actions = _sample_actions(rng_next, batch.next_obs)
         rng, rng_random = jax.random.split(rng)
+        # Need to multiply by action scale here
         cql_random_actions = jax.random.uniform(
-            rng_random, shape=batch.action.shape, minval=-2.0, maxval=2.0
-        )
+            rng_random, shape=batch.action.shape, minval=-1.0, maxval=1.0
+        ) * action_scale
 
         # --- Update critics ---
         @jax.value_and_grad
@@ -474,7 +475,7 @@ def train(args):
 
     # --- Make train step ---
     _agent_train_step_fn = make_train_step(
-        args, actor_net.apply, q_net.apply, alpha_net.apply, dataset
+        args, actor_net.apply, q_net.apply, alpha_net.apply, dataset, action_scale
     )
 
     # --- Make pretrain step ---
