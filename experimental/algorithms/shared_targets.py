@@ -163,6 +163,7 @@ class TanhGaussianActor(nn.Module):
     num_actions: int
     log_std_max: float = 2.0
     log_std_min: float = -5.0
+    action_scale: float = 1.0
 
     @nn.compact
     def __call__(self, x):
@@ -174,9 +175,15 @@ class TanhGaussianActor(nn.Module):
         )(x)
         std = jnp.exp(jnp.clip(log_std, self.log_std_min, self.log_std_max))
         mean = nn.Dense(self.num_actions, kernel_init=sym(1e-3), bias_init=sym(1e-3))(x)
+
+        bijectors = distrax.Chain([
+            distrax.Tanh(), 
+            distrax.ScalarAffine(scale=self.action_scale, shift=0.0)
+        ])
+
         pi = distrax.Transformed(
             distrax.Normal(mean, std),
-            distrax.Tanh(),
+            bijector=bijectors,
         )
         return pi
 
@@ -392,9 +399,11 @@ def train(args):
 
     # --- Initialize agent and value networks ---
     num_actions = env.single_action_space.shape[0]
+    action_scale = dataset_wrapper.get_action_scale()
+    print("Action scale", action_scale)
     dummy_obs = jnp.zeros(env.single_observation_space.shape)
     dummy_action = jnp.zeros(num_actions)
-    actor_net = TanhGaussianActor(num_actions)
+    actor_net = TanhGaussianActor(num_actions=num_actions, action_scale=action_scale)
 
     # --- Init Q, include prior net if enabled ---
     if args.prior:

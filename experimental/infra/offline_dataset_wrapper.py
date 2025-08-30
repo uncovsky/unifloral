@@ -10,6 +10,7 @@ import warnings
 
 
 class OfflineDatasetWrapper:
+
     """
         What is needed:
 
@@ -206,7 +207,6 @@ class OfflineDatasetWrapper:
         return eval_agent_gymnasium(args, rng, eval_env, agent_state)
         
 
-
     """
         Getters
     """
@@ -229,6 +229,22 @@ class OfflineDatasetWrapper:
         raise ValueError(
             "This dataset was not loaded from minari, thus no minari dataset is available."
         )
+
+
+    def get_action_scale(self):
+        """
+            Returns action scale.
+                We support scale * [-1, 1] action spaces only for now, where
+                the scale is constant across the action dimensions.
+
+                Examples:
+                    - all d4rl envs have scale 1.
+                    - Pendulum-v1 has scale 2.
+        """
+        if self.source == "d4rl":
+            return 1.0
+        # else minari, get first dim
+        return float(self._minari_dataset.action_space.high[0])
 
 
     def get_eval_env(self, args, rng):
