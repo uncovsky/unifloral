@@ -10,12 +10,12 @@ if __name__ == "__main__":
 
     print("Collecting data for Square Maze...")
     horizons = [5, 10, 15]
-    dataset_episodes = 1000
+    dataset_size = 100_000
     square_maze_seed = 42
 
     for H in horizons:
         print(f"Collecting dataset for horizon = {H}...")
-        collect_dataset(H=H, episodes=dataset_episodes, seed=square_maze_seed)
+        collect_dataset(H=H, steps=dataset_size, seed=square_maze_seed)
 
     print("Collecting data for Pendulum-v1...")
     env = gym.make("Pendulum-v1")

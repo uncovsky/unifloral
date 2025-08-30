@@ -6,7 +6,7 @@ import mock_environments
 import matplotlib.pyplot as plt
 import numpy as np
 
-def collect_dataset(H, episodes=1000, seed=0):
+def collect_dataset(H, steps=100000, seed=0):
 
     env = gym.make("SquareReachEnv-v0", H=H, render_mode="human")
 
@@ -15,8 +15,9 @@ def collect_dataset(H, episodes=1000, seed=0):
 
     rng = np.random.default_rng(seed)
     dataset = []
+    step = 0
 
-    for ep in range(episodes):
+    while step < steps:
         obs, _ = collecting_env.reset()
         done = False
         t = 0
@@ -25,6 +26,7 @@ def collect_dataset(H, episodes=1000, seed=0):
         random_steps = min(H // 5, 2)
 
         while not done:
+            step += 1
             if t < random_steps:
                 # Random heading in (-1, 1)
                 a = np.array([rng.uniform(-1, 1)], dtype=np.float32)
