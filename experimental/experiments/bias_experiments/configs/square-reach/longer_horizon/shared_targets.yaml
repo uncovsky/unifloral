@@ -11,7 +11,8 @@ project: square-shared-targets
 parameters:
   # --- Experiment ---
   seed:
-    values: [0, 1, 2, 3, 4]
+    #values: [0, 1, 2, 3, 4]
+    values: [0, 1]
   dataset-source:
     value: minari
   dataset-name:
