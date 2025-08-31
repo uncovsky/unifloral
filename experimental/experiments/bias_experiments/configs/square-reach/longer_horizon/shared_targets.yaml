@@ -16,14 +16,14 @@ parameters:
   dataset-source:
     value: minari
   dataset-name:
-    values: [square-reach/horizon-10-v0, square-reach/horizon-20-v0, square-reach/horizon-50-v0]
+    values: [square-reach/horizon-5-v0, square-reach/horizon-10-v0, square-reach/horizon-20-v0, square-reach/horizon-50-v0]
   algorithm:
     value: shared_targets
   num_updates:
     #values: [200_000, 500_000]
-    value : 100_000
+    value : 200_000
   eval_interval:
-    value: 10_000
+    value: 25_000
   eval_workers:
     value: 8
   eval_final_episodes:
