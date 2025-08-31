@@ -22,20 +22,13 @@ def collect_dataset(H, steps=100000, seed=0):
         done = False
         t = 0
 
-        # act randomly for first steps, then deterministically navigate to goal
-        random_steps = min(H // 5, 2)
-
         while not done:
             step += 1
-            if t < random_steps:
-                # Random heading in (-1, 1)
-                a = np.array([rng.uniform(-1, 1)], dtype=np.float32)
-            else:
-                # Aim at goal
-                gx, gy = 1.0, 1.0
-                vx, vy = gx - obs[0], gy - obs[1]
-                theta = np.arctan2(vy, vx)          # radians (-pi, pi)
-                a = np.array([np.clip(theta / np.pi, -1.0, 1.0)], dtype=np.float32)
+            # navigate to goal deterministically
+            gx, gy = 1.0, 1.0
+            vx, vy = gx - obs[0], gy - obs[1]
+            theta = np.arctan2(vy, vx)          # radians (-pi, pi)
+            a = np.array([np.clip(theta / np.pi, -1.0, 1.0)], dtype=np.float32)
 
             next_obs, reward, terminated, truncated, _ = collecting_env.step(a)
             dataset.append((obs, a, reward, next_obs, terminated or truncated))

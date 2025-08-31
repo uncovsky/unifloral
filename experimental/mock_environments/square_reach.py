@@ -61,8 +61,9 @@ class SquareReachEnv(gym.Env):
 
     def reset(self, *, seed=None, options=None):
         super().reset(seed=seed)
-        self.state = np.array([0.0, 0.0], dtype=np.float32)
         self.t = 0
+
+        self.state = self.np_random.uniform(low=0.0, high=0.5, size=(2,)).astype(np.float32)
 
         if self.current_trajectory and len(self.trajectories) < self.trajectories_limit:
             self.trajectories.append(self.current_trajectory)
@@ -91,8 +92,8 @@ class SquareReachEnv(gym.Env):
         
         reward = 1.0 if terminated else 0.0
 
-        # truncate on three times the effective horizon
-        truncated = self.t >= 3 * self.H
+        # truncate on two times the effective horizon
+        truncated = self.t >= 2 * self.H
 
         observation = self.add_goal_to_state(self.state)
         info = {"distance_to_goal": dist_to_goal}

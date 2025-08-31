@@ -10,7 +10,7 @@ if __name__ == "__main__":
 
     print("Collecting data for Square Maze...")
     horizons = [5, 10, 15]
-    dataset_size = 100_000
+    dataset_size = 20_000
     square_maze_seed = 42
 
     for H in horizons:
