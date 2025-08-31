@@ -54,20 +54,40 @@ class SquareReachEnv(gym.Env):
         self.trajectories = []
         self.current_trajectory = []
 
+        # whether to randomize initial state on reset
+        self.randomize = False
+
         self.trajectories_limit = 10
 
     def add_goal_to_state(self, state):
         return np.concatenate([state, self.goal], axis=-1)
 
-    def reset(self, *, seed=None, options=None):
+    def set_randomize(self, randomize):
+        self.randomize = randomize
+
+    def seed_init(self, seed=None):
+        self.init_random, _ = gym.utils.seeding.np_random(seed)
+
+    def reset(self, seed=None, options=None):
+        """
+            Randomize controls whether initial state is set to (0, 0)
+            or randomly sampled from [0, 0.5]^2.
+        """
+
         super().reset(seed=seed)
+
+        # reset timestep
         self.t = 0
 
-        self.state = self.np_random.uniform(low=0.0, high=0.5, size=(2,)).astype(np.float32)
-
+        # store a first few trajectories to visualize
         if self.current_trajectory and len(self.trajectories) < self.trajectories_limit:
             self.trajectories.append(self.current_trajectory)
         self.current_trajectory = []
+
+        if self.randomize:
+            self.state = self.init_random.uniform(low=0.0, high=0.5, size=(2,)).astype(np.float32)
+        else:
+            self.state = np.array([0.0, 0.0], dtype=np.float32)
 
         return self.add_goal_to_state(self.state), {}
 
@@ -83,18 +103,15 @@ class SquareReachEnv(gym.Env):
         dx = self.step_size * np.cos(theta)
         dy = self.step_size * np.sin(theta)
         self.state = np.clip(self.state + np.array([dx, dy], dtype=np.float32), 0.0, 1.0)
-
         self.t += 1
 
         # Check goal condition
         dist_to_goal = np.linalg.norm(self.state - self.goal)
         terminated = dist_to_goal <= self.step_size
-        
         reward = 1.0 if terminated else 0.0
 
         # truncate on two times the effective horizon
         truncated = self.t >= 2 * self.H
-
         observation = self.add_goal_to_state(self.state)
         info = {"distance_to_goal": dist_to_goal}
 

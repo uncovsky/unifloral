@@ -8,20 +8,28 @@ import numpy as np
 
 def collect_dataset(H, steps=100000, seed=0):
 
+    
     env = gym.make("SquareReachEnv-v0", H=H, render_mode="human")
 
     # collect data
     collecting_env = DataCollector(env)
 
-    rng = np.random.default_rng(seed)
-    dataset = []
+
+    phase_steps = steps // 2
+
+    """
+        Phase one - sample random initial states, navigate to goal
+    """
+    # Seed the rng for initial state sampling, sample random state
+    env.unwrapped.seed_init(seed)
+    # Enable sampling of initial states
+    env.unwrapped.set_randomize(True)
+
     step = 0
+    obs, _ = collecting_env.reset(seed=seed)
 
-    while step < steps:
-        obs, _ = collecting_env.reset()
+    while step < phase_steps:
         done = False
-        t = 0
-
         while not done:
             step += 1
             # navigate to goal deterministically
@@ -31,14 +39,53 @@ def collect_dataset(H, steps=100000, seed=0):
             a = np.array([np.clip(theta / np.pi, -1.0, 1.0)], dtype=np.float32)
 
             next_obs, reward, terminated, truncated, _ = collecting_env.step(a)
-            dataset.append((obs, a, reward, next_obs, terminated or truncated))
 
             obs = next_obs
             done = terminated or truncated
+
+            if done:
+                obs, _ = collecting_env.reset()
+
+
+
+    """
+        Phase two - fixed initial state, random actions
+    """ 
+
+    env.unwrapped.set_randomize(False)
+    rng = np.random.default_rng(seed)
+    obs, _ = collecting_env.reset()
+
+    step = 0
+    random_steps = H // 5
+
+    while step < phase_steps:
+        done = False
+        t = 0
+        while not done:
+            if t < random_steps:
+                a = np.array([rng.uniform(-1, 1)], dtype=np.float32)
+
+            else:
+                # navigate to goal deterministically
+                gx, gy = 1.0, 1.0
+                vx, vy = gx - obs[0], gy - obs[1]
+                theta = np.arctan2(vy, vx)
+                a = np.array([np.clip(theta / np.pi, -1.0, 1.0)], dtype=np.float32)
+
+            step += 1
             t += 1
 
+            next_obs, reward, terminated, truncated, _ = collecting_env.step(a)
 
-    print("Final transition: ", dataset[-1])
+            obs = next_obs
+            done = terminated or truncated
+
+            if done:
+                obs, _ = collecting_env.reset()
+
+
+    
 
     # save plot of first 10 trajectories
     env.unwrapped.plot_trajectories()
@@ -56,3 +103,4 @@ def collect_dataset(H, steps=100000, seed=0):
     )
 
     env.close()
+
