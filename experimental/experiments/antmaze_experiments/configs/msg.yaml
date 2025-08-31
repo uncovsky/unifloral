@@ -4,21 +4,20 @@ command:
   - ${args_no_boolean_flags}
 entity: ahoj
 method: grid
-name: ant-pretrained
-program: algorithms/shared_targets.py
-project: ant_shared
+name: MSG
+program: algorithms/msg.py
+project: eval
 
 parameters:
   # --- Experiment ---
   seed:
-    # values: [0, 1, 2, 3, 4]
-    values : [0,1,2]
+    values: [0, 1, 2]
   dataset:
     values:
       - antmaze-medium-diverse-v2
       - antmaze-medium-play-v2
   algorithm:
-    value: sacn
+    value: msg
   num_updates:
     value: 1_000_000
   eval_interval:
@@ -32,9 +31,9 @@ parameters:
   log:
     value: true
   wandb_project:
-    value: unifloral
+    value: eval
   wandb_team:
-    value: flair
+    value: ahoj
   wandb_group:
     value: debug
 
@@ -50,11 +49,10 @@ parameters:
 
   # --- SAC-N ---
   num_critics:
-    #values: [10, 20, 50]  # 100 has high GPU memory usage
-    values : [2, 20, 50]
-  # --- Experimental ---
-  pretrain_updates:
-    value: 0 
+    values: [10, 20]
 
-
-  
+  # --- MSG ---
+  cql_min_q_weight: 
+    values : [0.1, 0.3]
+  actor_lcb_coef : 
+    values : [4.0, 8.0]
