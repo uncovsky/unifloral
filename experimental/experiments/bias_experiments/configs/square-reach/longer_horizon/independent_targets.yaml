@@ -21,13 +21,13 @@ parameters:
     value: independent_targets
   num_updates:
     #values: [200_000, 500_000]
-    value : 250_000
+    value : 100_000
   eval_interval:
-    value: 25_000
+    value: 10_000
   eval_workers:
     value: 8
   eval_final_episodes:
-    value: 4000
+    value: 1000
 
   # --- Logging ---
   log:
