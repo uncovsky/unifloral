@@ -14,7 +14,6 @@ import optax
 # make a function that selects the right pretraining loss based on argument,
 # sort of a "loss factory".
 
-
 # Add lagrangian for scheduling of losses
 
 def pretrain_loss_factory(args, actor_apply_fn, q_apply_fn, alpha_apply_fn):

@@ -21,6 +21,7 @@ import tyro
 import wandb
 
 from infra.pretraining import make_pretrain_step
+from infra.ensemble_regularization import select_regularizer
 from infra.offline_dataset_wrapper import OfflineDatasetWrapper
 
 os.environ["XLA_FLAGS"] = "--xla_gpu_triton_gemm_any=True"
@@ -75,10 +76,13 @@ class Args:
     # --- MSG ---
     cql_min_q_weight: float = 0.5
     actor_lcb_coef: float = 4.0
-    # --- Experimental --- 
+    # ---  Pretraining ---
     pretrain_updates : int = 0
     pretrain_loss : str = "bc+sarsa"
     pretrain_lag_init: float = 1.0
+    # --- Diversity --- 
+    ensemble_regularizer : str = "none"
+    reg_lagrangian: float = 1.0
     # --- RPF --- 
     prior: bool = False
     randomized_prior_depth : int = 3
@@ -366,6 +370,15 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset):
         rng, rng_pi = jax.random.split(rng, 2)
         pi_actions = _sample_actions(rng_pi, batch.obs)
 
+        # --- Select the regularizer based on args --- 
+        rng, rng_reg = jax.random.split(rng, 2)
+        rng_reg_loss, rng_reg = jax.random.split(rng_reg, 2)
+
+        ensemble_regularizer_fn = select_regularizer(args, actor_apply_fn, q_apply_fn)
+
+        # Get specialized loss function with current state
+        ensemble_reg_loss = ensemble_regularizer_fn(agent_state, rng_reg, batch)
+
         # --- Update critics ---
         @partial(jax.value_and_grad, has_aux=True)
         def _q_loss_fn(params):
@@ -381,6 +394,7 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset):
             min_q_loss = q_diff * args.cql_min_q_weight
 
             critic_loss += min_q_loss.mean()
+            critic_loss += args.reg_lagrangian * ensemble_reg_loss(params, rng_reg_loss, batch)
             return critic_loss, (q_pred.mean(), q_pred.std(),
                                  pi_q.mean(), pi_q.std())
 
