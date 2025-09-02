@@ -20,8 +20,8 @@ import optax
 import tyro
 import wandb
 
-from infra.pretraining import make_pretrain_step
 from infra.ensemble_regularization import select_regularizer
+from infra.pretraining import make_pretrain_step
 from infra.offline_dataset_wrapper import OfflineDatasetWrapper
 
 os.environ["XLA_FLAGS"] = "--xla_gpu_triton_gemm_any=True"
@@ -358,26 +358,21 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset):
             )
             return next_q - alpha * log_next_pi.sum(-1)
 
+        # --- Get targets ----
         rng, rng_next_v = jax.random.split(rng)
         rng_next_v = jax.random.split(rng_next_v, args.batch_size)
         next_v_target = jax.vmap(_sample_next_v)(rng_next_v, batch)
-
-        # Expand [B] -> [B, 1] and broadcast to get [B, ensemble_size] targets
         target = jnp.expand_dims(batch.reward, -1) + args.gamma * jnp.expand_dims((1 - batch.done), -1) * next_v_target
 
         # --- Sample actions for CQL ---
         def _sample_actions(rng, obs):
             pi = actor_apply_fn(agent_state.actor.params, obs)
             return pi.sample(seed=rng)
-
         rng, rng_pi = jax.random.split(rng, 2)
         pi_actions = _sample_actions(rng_pi, batch.obs)
 
-        # --- Select the regularizer based on args --- 
-        rng, rng_reg = jax.random.split(rng, 2)
-        rng_reg_loss, rng_reg = jax.random.split(rng_reg, 2)
-
-        # Get specialized loss function with current state
+        rng, rng_reg, rng_reg_loss = jax.random.split(rng, 3)
+        # --- Get specialized loss function with current state --- 
         ensemble_reg_loss = ensemble_regularizer_fn(agent_state, rng_reg, batch)
 
         # --- Update critics ---

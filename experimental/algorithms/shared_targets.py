@@ -20,6 +20,7 @@ import optax
 import tyro
 import wandb
 
+from infra.ensemble_regularization import select_regularizer
 from infra.pretraining import make_pretrain_step
 from infra.offline_dataset_wrapper import OfflineDatasetWrapper
 
@@ -72,10 +73,13 @@ class Args:
     polyak_step_size: float = 0.005
     # --- SAC-N ---
     num_critics: int = 10
-    # --- Experimental --- 
+    # ---  Pretraining ---
     pretrain_updates : int = 0
     pretrain_loss : str = "bc+sarsa"
     pretrain_lag_init: float = 1.0
+    # --- Diversity --- 
+    ensemble_regularizer : str = "none"
+    reg_lagrangian: float = 1.0
     # --- RPF --- 
     prior: bool = False
     randomized_prior_depth : int = 3
@@ -253,6 +257,9 @@ r"""
 def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset):
     """Make JIT-compatible agent train step."""
 
+    # Select regularizer based on args
+    ensemble_regularizer_fn = select_regularizer(args, actor_apply_fn, q_apply_fn)
+
     def _train_step(runner_state, _):
         rng, agent_state = runner_state
 
@@ -301,7 +308,7 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset):
             return loss.mean(), (entropy.mean(), q_min.mean(), q_std.mean())
 
         rng, rng_actor = jax.random.split(rng)
-        (actor_loss, (entropy, q_min, q_std)), actor_grad = _actor_loss_function(
+        (actor_loss, (entropy, q_pred_min, q_pred_std)), actor_grad = _actor_loss_function(
             agent_state.actor.params, rng_actor
         )
         updated_actor = agent_state.actor.apply_gradients(grads=actor_grad)
@@ -335,24 +342,48 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset):
         next_v_target = jax.vmap(_sample_next_v)(rng_next_v, batch)
         target = batch.reward + args.gamma * (1 - batch.done) * next_v_target
 
+        rng, rng_reg, rng_reg_loss = jax.random.split(rng, 3)
+        # --- Get specialized loss function with current state --- 
+        ensemble_reg_loss = ensemble_regularizer_fn(agent_state, rng_reg, batch)
+
+
         # --- Update critics ---
-        @jax.value_and_grad
+        @partial(jax.value_and_grad, has_aux=True)
         def _q_loss_fn(params):
             q_pred = q_apply_fn(params, batch.obs, batch.action)
-            return jnp.square((q_pred - jnp.expand_dims(target, -1))).sum(-1).mean()
+            critic_loss = jnp.square((q_pred - jnp.expand_dims(target, -1))).sum(-1).mean()
+            regularizer_loss = ensemble_reg_loss(params, rng_reg_loss, batch)
+            critic_loss += args.reg_lagrangian * regularizer_loss
+            return critic_loss, (regularizer_loss, q_pred.mean())
 
-        critic_loss, critic_grad = _q_loss_fn(agent_state.vec_q.params)
+        # --- Sample actions from pi and get their std for logging --- 
+        def _sample_actions(rng, obs):
+            pi = actor_apply_fn(agent_state.actor.params, obs)
+            return pi.sample(seed=rng)
+        rng, rng_pi = jax.random.split(rng, 2)
+        pi_actions = _sample_actions(rng_pi, batch.obs)
+        pi_qs = q_apply_fn(agent_state.vec_q.params, batch.obs, pi_actions)
+
+        pi_q_mean = pi_qs.mean()
+        pi_q_std = pi_qs.std(-1).mean()
+
+        (critic_loss, (regularizer_loss, q_pred_mean)), critic_grad = _q_loss_fn(agent_state.vec_q.params)
         updated_q = agent_state.vec_q.apply_gradients(grads=critic_grad)
         agent_state = agent_state._replace(vec_q=updated_q)
+
 
         loss = {
             "critic_loss": critic_loss,
             "actor_loss": actor_loss,
             "alpha_loss": alpha_loss,
+            "regularizer_loss": regularizer_loss,
             "entropy": entropy,
             "alpha": alpha,
-            "q_min": q_min,
-            "q_std": q_std,
+            "q_pred_min": q_pred_min,
+            "q_pred_mean": q_pred_mean,
+            "q_pred_std": q_pred_std,
+            "pi_q_mean": pi_q_mean,
+            "pi_q_std": pi_q_std,
         }
         return (rng, agent_state), loss
 
