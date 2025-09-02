@@ -266,6 +266,9 @@ r"""
 def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset):
     """Make JIT-compatible agent train step."""
 
+    # Select regularizer based on args
+    ensemble_regularizer_fn = select_regularizer(args, actor_apply_fn, q_apply_fn)
+
     def _train_step(runner_state, _):
         rng, agent_state = runner_state
 
@@ -374,8 +377,6 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset):
         rng, rng_reg = jax.random.split(rng, 2)
         rng_reg_loss, rng_reg = jax.random.split(rng_reg, 2)
 
-        ensemble_regularizer_fn = select_regularizer(args, actor_apply_fn, q_apply_fn)
-
         # Get specialized loss function with current state
         ensemble_reg_loss = ensemble_regularizer_fn(agent_state, rng_reg, batch)
 
@@ -390,16 +391,18 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset):
             # Q(s,a) for a ~ pi(s), shape [B, ensemble_size]
             pi_q = q_apply_fn(params, batch.obs, pi_actions)
             # [B, 1] for each s in batch, reduce over ensemble dim
-            q_diff = (pi_q - q_pred).sum(-1)
-            min_q_loss = q_diff * args.cql_min_q_weight
+            cql_loss = (pi_q - q_pred).sum(-1).mean()
+            regularizer_loss = ensemble_reg_loss(params, rng_reg_loss, batch)
 
-            critic_loss += min_q_loss.mean()
-            critic_loss += args.reg_lagrangian * ensemble_reg_loss(params, rng_reg_loss, batch)
-            return critic_loss, (q_pred.mean(), q_pred.std(),
+            # CQL regularizer + Diversity regularizer
+            critic_loss += args.cql_min_q_weight * cql_loss
+            critic_loss += args.reg_lagrangian * regularizer_loss
+
+            return critic_loss, (cql_loss, regularizer_loss, q_pred.mean(), q_pred.std(),
                                  pi_q.mean(), pi_q.std())
 
         # unpack aux and get critic grad
-        (critic_loss, (q_pred_mean, q_pred_std, pi_q_mean, pi_q_std)), critic_grad = _q_loss_fn(agent_state.vec_q.params)
+        (critic_loss, (cql_loss, regularizer_loss, q_pred_mean, q_pred_std, pi_q_mean, pi_q_std)), critic_grad = _q_loss_fn(agent_state.vec_q.params)
 
         updated_q = agent_state.vec_q.apply_gradients(grads=critic_grad)
         agent_state = agent_state._replace(vec_q=updated_q)
@@ -408,6 +411,8 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset):
             "critic_loss": critic_loss,
             "actor_loss": actor_loss,
             "alpha_loss": alpha_loss,
+            "cql_loss": cql_loss,
+            "regularizer_loss": regularizer_loss,
             "entropy": entropy,
             "alpha": alpha,
             "actor_q_lcb": q_lcb,

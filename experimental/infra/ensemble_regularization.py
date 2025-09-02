@@ -17,6 +17,12 @@ def regularizer_factory(args, actor_apply_fn, q_apply_fn):
         Every loss should follow the signature:
             loss_name(agent_state, rng, batch):
                and return a loss that can be differentiated + traced
+
+        three level hierarchy:
+            1) Factory picks right function when make_train_step is invoked in training
+            2) During every train step we specialize based on current state
+            (sample actions from curr actor outside grad, etc.)
+            3) Innermost loss is the differentiable regularizer called in q_loss_fn
     """
 
     """
@@ -27,9 +33,8 @@ def regularizer_factory(args, actor_apply_fn, q_apply_fn):
         """
         No-op loss, used when args.ensemble_regularizer is 'none'
         """
-        @partial(jax.value_and_grad, argnums=0)
         def _noop_loss_fn(critic_params, rng, batch):
-            return jnp.zeros((1,))
+            return jnp.array(0.0)
 
         return _noop_loss_fn
     
@@ -90,7 +95,6 @@ def regularizer_factory(args, actor_apply_fn, q_apply_fn):
             3) Penalize similarity
         """
 
-        @partial(jax.value_and_grad, argnums=0)
         def _loss_fn(critic_params, rng, batch):
             def _diversity_loss_fn(obs, action):
                 # shape (E, A) ensemble outputs, A inputs (action)
@@ -102,10 +106,12 @@ def regularizer_factory(args, actor_apply_fn, q_apply_fn):
                 # Mask diagonal 
                 div_loss *= 1.0 - jnp.eye(args.num_critics)
                 return div_loss.sum()
+
             # vmap over whole batch
             diversity_loss = jax.vmap(_diversity_loss_fn)(batch.obs, batch.action)
             return diversity_loss.mean()
-        return _loss_fn(agent_state.vec_q.params, rng, batch)
+
+        return _loss_fn
 
     
     """
@@ -120,6 +126,7 @@ def regularizer_factory(args, actor_apply_fn, q_apply_fn):
     }
 
     if args.ensemble_regularizer in loss_dict:
+        print(f"Using ensemble regularizer: {args.ensemble_regularizer}")
         return loss_dict[args.ensemble_regularizer]
 
     else:
