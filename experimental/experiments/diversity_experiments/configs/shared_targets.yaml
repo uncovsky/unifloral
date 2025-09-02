@@ -18,8 +18,8 @@ parameters:
     values:
       - halfcheetah-medium-v2 # Easy benchmarks
       - halfcheetah-medium-expert-v2
-      - hopper-medium-v2 # Need ~500 ensemble w. shared to solve
-      - hopper-medium-expert-v2
+        #- hopper-medium-v2 # Need ~500 ensemble w. shared to solve
+        #- hopper-medium-expert-v2
 
   algorithm:
     value: independent_targets
