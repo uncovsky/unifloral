@@ -5,7 +5,7 @@ import os
 os.environ["XLA_PYTHON_CLIENT_PREALLOCATE"] = "false"
 
 DEFAULT_FOLDERS = {
-    "square-reach": "experiments/bias_experiments/configs/square-reach",
+    "square-reach": "experiments/bias_experiments/configs/square-reach/longer_horizon",
     "pendulum": "experiments/bias_experiments/configs/pendulum",
 }
 

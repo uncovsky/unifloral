@@ -11,17 +11,16 @@ project: square-cql
 parameters:
   # --- Experiment ---
   seed:
-    #values: [0, 1, 2, 3, 4]
-    values: [0, 1]
+    values: [0, 1, 2, 3, 4]
   dataset-source:
     value: minari
   dataset-name:
-    values: [square-reach/horizon-5-v0, square-reach/horizon-10-v0, square-reach/horizon-20-v0, square-reach/horizon-50-v0]
+    values: [square-reach/horizon-10-v0, square-reach/horizon-20-v0, square-reach/horizon-50-v0, square-reach/horizon-100-v0, square-reach/horizon-200-v0]
   algorithm:
     value: cql
   num_updates:
     #values: [200_000, 500_000]
-    value : 200_000
+    value : 400_000
   eval_interval:
     value: 25_000
   eval_workers:
@@ -59,6 +58,6 @@ parameters:
   cql_temperature:
     value: 1.0
   cql_min_q_weight:
-    values: [0.05, 0.1, 0.2] # Keep weight relatively low, since near-expert data
+    values: [0.05] # Keep weight relatively low, since near-expert data
 
   # --- Experimental ---

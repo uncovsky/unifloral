@@ -22,6 +22,7 @@ def collect_dataset(H, steps=100000, seed=0):
     """
     # Seed the rng for initial state sampling, sample random state
     env.unwrapped.seed_init(seed)
+
     # Enable sampling of initial states
     env.unwrapped.set_randomize(True)
 

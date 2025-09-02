@@ -11,17 +11,16 @@ project: square-shared-targets
 parameters:
   # --- Experiment ---
   seed:
-    #values: [0, 1, 2, 3, 4]
-    values: [0, 1]
+    values: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
   dataset-source:
     value: minari
   dataset-name:
-    values: [square-reach/horizon-5-v0, square-reach/horizon-10-v0, square-reach/horizon-20-v0, square-reach/horizon-50-v0]
+    values: [square-reach/horizon-10-v0, square-reach/horizon-20-v0, square-reach/horizon-50-v0, square-reach/horizon-100-v0, square-reach/horizon-200-v0]
   algorithm:
     value: shared_targets
   num_updates:
     #values: [200_000, 500_000]
-    value : 200_000
+    value : 400_000
   eval_interval:
     value: 25_000
   eval_workers:
@@ -51,4 +50,4 @@ parameters:
 
   # --- SAC-N ---
   num_critics:
-    values: [2, 10] # 500 and 1000 have high GPU memory usage
+    values: [10, 30] # 500 and 1000 have high GPU memory usage
