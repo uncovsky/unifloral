@@ -97,5 +97,3 @@ def collect_dataset(H, episodes=5000, seed=0):
     )
 
     env.close()
-
-collect_dataset(H=22, steps=100_000, seed=0)
