@@ -329,12 +329,16 @@ def eval_agent_gymnasium(args, rng, env, agent_state):
         return jnp.nan_to_num(action)
 
     max_episode_steps = env.env_fns[0]().spec.max_episode_steps
+    first_action = True
     while step < max_episode_steps and not returned.all():
         # --- Take step in environment ---
         step += 1
         rng, rng_step = jax.random.split(rng)
         rng_step = jax.random.split(rng_step, args.eval_workers)
         action = _policy_step(rng_step, jnp.array(obs))
+        if first_action:
+            print("First action:", action)
+            first_action = False
         obs, reward, terminated, truncated, info = env.step(onp.array(action))
 
         # --- Update cumulative reward ---

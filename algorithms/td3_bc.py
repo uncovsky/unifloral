@@ -16,6 +16,8 @@ import optax
 import tyro
 import wandb
 
+from infra.offline_dataset_wrapper import OfflineDatasetWrapper
+
 os.environ["XLA_FLAGS"] = "--xla_gpu_triton_gemm_any=True"
 
 
@@ -23,7 +25,8 @@ os.environ["XLA_FLAGS"] = "--xla_gpu_triton_gemm_any=True"
 class Args:
     # --- Experiment ---
     seed: int = 0
-    dataset: str = "halfcheetah-medium-v2"
+    dataset_source : str = "d4rl"
+    dataset_name: str = "halfcheetah-medium-v2"
     algorithm: str = "td3_bc"
     num_updates: int = 1_000_000
     eval_interval: int = 2500
@@ -294,9 +297,13 @@ if __name__ == "__main__":
             job_type="train_agent",
         )
 
+    dataset_wrapper = OfflineDatasetWrapper(source=args.dataset_source,
+                                            dataset=args.dataset_name)
     # --- Initialize environment and dataset ---
-    env = gym.vector.make(args.dataset, num_envs=args.eval_workers)
-    dataset = d4rl.qlearning_dataset(gym.make(args.dataset))
+    rng, rng_env = jax.random.split(rng)
+    env = dataset_wrapper.get_eval_env(args.eval_workers, rng_env)
+
+    dataset = dataset_wrapper.get_dataset()
     dataset = Transition(
         obs=jnp.array(dataset["observations"]),
         action=jnp.array(dataset["actions"]),
@@ -338,8 +345,9 @@ if __name__ == "__main__":
 
         # --- Evaluate agent ---
         rng, rng_eval = jax.random.split(rng)
-        returns = eval_agent(args, rng_eval, env, agent_state)
-        scores = d4rl.get_normalized_score(args.dataset, returns) * 100.0
+        # Evaluates on env from get_eval_env
+        returns = dataset_wrapper.eval_agent(args, rng_eval, agent_state)
+        scores = dataset_wrapper.get_normalized_score(returns) * 100.0
 
         # --- Log metrics ---
         step = (eval_idx + 1) * args.eval_interval
@@ -359,15 +367,18 @@ if __name__ == "__main__":
         final_iters = int(onp.ceil(args.eval_final_episodes / args.eval_workers))
         print(f"Evaluating final agent for {final_iters} iterations...")
         _rng = jax.random.split(rng, final_iters)
-        rets = onp.concat([eval_agent(args, _rng, env, agent_state) for _rng in _rng])
-        scores = d4rl.get_normalized_score(args.dataset, rets) * 100.0
+        rets = onp.concatenate([dataset_wrapper.eval_agent(args, _rng, agent_state) for _rng in _rng])
+        print("Returns: ", rets)
+        env.close()
+        scores = dataset_wrapper.get_normalized_score(rets) * 100.0
         agg_fn = lambda x, k: {k: x, f"{k}_mean": x.mean(), f"{k}_std": x.std()}
         info = agg_fn(rets, "final_returns") | agg_fn(scores, "final_scores")
 
         # --- Write final returns to file ---
         os.makedirs("final_returns", exist_ok=True)
         time_str = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-        filename = f"{args.algorithm}_{args.dataset}_{time_str}.npz"
+        filtered_name = args.dataset_name.replace("/", "_").replace("-", "_")
+        filename = f"{args.algorithm}_{filtered_name}_{time_str}.npz"
         with open(os.path.join("final_returns", filename), "wb") as f:
             onp.savez_compressed(f, **info, args=asdict(args))
 
