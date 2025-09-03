@@ -1,0 +1,78 @@
+command:
+  - python3
+  - ${program}
+  - ${args_no_boolean_flags}
+entity: ahoj
+method: grid
+name: independent_targets
+program: algorithms/independent_targets.py
+project: square-independent-targets
+
+parameters:
+  # --- Experiment ---
+  seed:
+    values: [0, 1, 2, 3, 4]
+  dataset-source:
+    value: d4rl
+  dataset-name:
+    values:
+      - halfcheetah-medium-v2 # Easy benchmarks
+      - halfcheetah-medium-expert-v2
+        #- hopper-medium-v2 # Need ~500 ensemble w. shared to solve
+        #- hopper-medium-expert-v2
+
+  algorithm:
+    value: independent_targets
+  num_updates:
+    value : 500_000
+  eval_interval:
+    value: 25_000
+  eval_workers:
+    value: 8
+  eval_final_episodes:
+    value: 1000
+
+  # --- Logging ---
+  log:
+    value: true
+  wandb_project:
+    value: square-msg
+  wandb_team:
+    value: ahoj
+  wandb_group:
+    value: debug
+
+  # --- Generic optimization ---
+  lr:
+    value: 3e-4
+  batch_size:
+    value: 256
+  gamma:
+    value: 0.999
+  polyak_step_size:
+    value: 0.005
+
+  # --- SAC-N ---
+  num_critics:
+    value: 10
+
+  # --- MSG ---
+  cql_min_q_weight: 
+    value: 0.2
+  actor_lcb_coef : 
+    values : [4.0]
+
+  # --- pretraining
+  pretrain_updates:
+    value: 0
+
+  # --- diversity
+  ensemble_regularizer:
+    values:
+      - std
+      - mean_vector
+      - edac
+      - none
+  reg_lagrangian:
+    values: [0.01, 0.1]
+  # --- Test prior later
