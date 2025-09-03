@@ -11,11 +11,11 @@ if __name__ == "__main__":
     print("Collecting data for Square Maze...")
     horizons = [10, 20, 50, 100, 200]
     dataset_size = 5000
-    square_maze_seed = 42
+    seeds = [0, 1, 2, 3, 4]
 
-    for H in horizons:
+    for i, H in enumerate(horizons):
         print(f"Collecting dataset for horizon = {H}...")
-        collect_dataset(H=H, episodes=dataset_size, seed=square_maze_seed)
+        collect_dataset(H=H, episodes=dataset_size, seed=seeds[i])
 
     print("Collecting data for Pendulum-v1...")
     env = gym.make("Pendulum-v1")

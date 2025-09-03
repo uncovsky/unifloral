@@ -25,7 +25,6 @@ def collect_dataset(H, episodes=5000, seed=0):
     phase_episodes = episodes // 2
     obs, _ = collecting_env.reset(seed=seed)
 
-    
     for ep in range(phase_episodes):
         done = False
         while not done:
@@ -99,3 +98,4 @@ def collect_dataset(H, episodes=5000, seed=0):
 
     env.close()
 
+collect_dataset(H=22, steps=100_000, seed=0)

@@ -71,7 +71,6 @@ def collect_agent_dataset(env, agent, dataset_size, dataset_name, seed=42):
         if terminated or truncated:
             # Force same starting state in every ep
             obs, _ = env.reset(seed=seed)
-            print("starting", obs)
     now = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 
     dataset_id = f"pendulum/{dataset_name}"
@@ -102,16 +101,14 @@ def collect_uniform_dataset(env, first_state_policy, dataset_size,
     obs, _ = env.reset(seed=seed)
     env.action_space.seed(seed)
 
-    action = first_state_policy(obs)
 
     while step < dataset_size:
+        action = first_state_policy(obs)
         obs, reward, terminated, truncated, info = env.step(action)
-        action = env.action_space.sample()  # Random action after first state
         step += 1
 
         if terminated or truncated:
             obs, _ = env.reset(seed=seed)
-            action = first_state_policy(obs)
 
 
     now = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
