@@ -6,16 +6,13 @@ import mock_environments
 import matplotlib.pyplot as plt
 import numpy as np
 
-def collect_dataset(H, steps=100000, seed=0):
+def collect_dataset(H, episodes=5000, seed=0):
 
     
     env = gym.make("SquareReachEnv-v0", H=H, render_mode="human")
 
     # collect data
     collecting_env = DataCollector(env)
-
-
-    phase_steps = steps // 2
 
     """
         Phase one - sample random initial states, navigate to goal
@@ -25,13 +22,13 @@ def collect_dataset(H, steps=100000, seed=0):
     # Enable sampling of initial states
     env.unwrapped.set_randomize(True)
 
-    step = 0
+    phase_episodes = episodes // 2
     obs, _ = collecting_env.reset(seed=seed)
 
-    while step < phase_steps:
+    
+    for ep in range(phase_episodes):
         done = False
         while not done:
-            step += 1
             # navigate to goal deterministically
             gx, gy = 1.0, 1.0
             vx, vy = gx - obs[0], gy - obs[1]
@@ -56,10 +53,9 @@ def collect_dataset(H, steps=100000, seed=0):
     rng = np.random.default_rng(seed)
     obs, _ = collecting_env.reset()
 
-    step = 0
     random_steps = H // 5
 
-    while step < phase_steps:
+    for ep in range(phase_episodes):
         done = False
         t = 0
         while not done:
@@ -73,7 +69,6 @@ def collect_dataset(H, steps=100000, seed=0):
                 theta = np.arctan2(vy, vx)
                 a = np.array([np.clip(theta / np.pi, -1.0, 1.0)], dtype=np.float32)
 
-            step += 1
             t += 1
 
             next_obs, reward, terminated, truncated, _ = collecting_env.step(a)

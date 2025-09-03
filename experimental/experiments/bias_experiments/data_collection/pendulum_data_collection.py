@@ -111,7 +111,6 @@ def collect_uniform_dataset(env, first_state_policy, dataset_size,
 
         if terminated or truncated:
             obs, _ = env.reset(seed=seed)
-            print("starting", obs)
             action = first_state_policy(obs)
 
 
