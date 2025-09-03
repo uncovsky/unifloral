@@ -11,18 +11,22 @@ project: square-shared-targets
 parameters:
   # --- Experiment ---
   seed:
-    values: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+    values: [0, 1, 2, 3, 4]
   dataset-source:
-    value: minari
+    value: d4rl
   dataset-name:
-    values: [square-reach/horizon-10-v0, square-reach/horizon-20-v0, square-reach/horizon-50-v0, square-reach/horizon-100-v0, square-reach/horizon-200-v0]
+    values:
+      - halfcheetah-medium-v2 # Easy benchmarks
+      - halfcheetah-medium-expert-v2
+        #- hopper-medium-v2 # Need ~500 ensemble w. shared to solve
+        #- hopper-medium-expert-v2
+
   algorithm:
-    value: shared_targets
+    value: independent_targets
   num_updates:
-    #values: [200_000, 500_000]
-    value : 400_000
+    value : 500_000
   eval_interval:
-    value: 40_000
+    value: 25_000
   eval_workers:
     value: 8
   eval_final_episodes:
@@ -50,4 +54,19 @@ parameters:
 
   # --- SAC-N ---
   num_critics:
-    values: [10, 30] # 500 and 1000 have high GPU memory usage
+    value: 10
+
+  # --- pretraining
+  pretrain_updates:
+    value: 0
+
+  # --- diversity
+  ensemble_regularizer:
+    values:
+      - mean_vector
+      - std
+      - edac
+      - none
+  reg_lagrangian:
+    values: [0.01, 0.1]
+  # --- Test prior later

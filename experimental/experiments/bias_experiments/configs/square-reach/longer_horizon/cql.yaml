@@ -11,7 +11,7 @@ project: square-cql
 parameters:
   # --- Experiment ---
   seed:
-    values: [0, 1, 2, 3, 4]
+    values: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
   dataset-source:
     value: minari
   dataset-name:
@@ -22,7 +22,7 @@ parameters:
     #values: [200_000, 500_000]
     value : 400_000
   eval_interval:
-    value: 25_000
+    value: 40_000
   eval_workers:
     value: 8
   eval_final_episodes:
@@ -58,6 +58,5 @@ parameters:
   cql_temperature:
     value: 1.0
   cql_min_q_weight:
-    values: [0.05] # Keep weight relatively low, since near-expert data
-
+    value : 0.05
   # --- Experimental ---

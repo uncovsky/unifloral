@@ -9,13 +9,14 @@ from data_collection.square_maze_data_collection import collect_dataset
 if __name__ == "__main__":
 
     print("Collecting data for Square Maze...")
-    horizons = [100, 200]
-    dataset_size = 50_000
-    seeds = [5, 6]
+
+    horizons = [10, 20, 50, 100, 200]
+    dataset_size = 5000
+    seeds = [0, 1, 2, 3, 4]
 
     for i, H in enumerate(horizons):
         print(f"Collecting dataset for horizon = {H}...")
-        collect_dataset(H=H, steps=dataset_size, seed=seeds[i])
+        collect_dataset(H=H, episodes=dataset_size, seed=seeds[i])
 
     print("Collecting data for Pendulum-v1...")
     env = gym.make("Pendulum-v1")

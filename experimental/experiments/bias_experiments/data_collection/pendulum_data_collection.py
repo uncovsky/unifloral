@@ -71,7 +71,6 @@ def collect_agent_dataset(env, agent, dataset_size, dataset_name, seed=42):
         if terminated or truncated:
             # Force same starting state in every ep
             obs, _ = env.reset(seed=seed)
-            print("starting", obs)
     now = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 
     dataset_id = f"pendulum/{dataset_name}"

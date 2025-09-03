@@ -65,21 +65,31 @@ def process_square_reach_data(df: pd.DataFrame):
             .agg(final_returns_mean=('final_returns_mean', 'mean'))
             .reset_index()
         )
+
         
         # Build a string label: algo + hyperparam settings
-        for _, row in grouped.iterrows():
+        for group, row in grouped.iterrows():
             desc_parts = [f"{algo}"]
             desc_parts += [f"{hp}={row[hp]}" for hp in hyperparams]
             desc = ", ".join(desc_parts)
+
+            text = row["dataset_name"]
+            horizon = re.search(r"\d+", text)
+
+            print(horizon)
             
             rows.append({
                 "description": desc,
-                "dataset": row["dataset_name"],
+                "dataset": int(horizon.group()),
                 "algorithm": algo,
                 "final_returns_mean": row["final_returns_mean"]
             })
 
     long_df = pd.DataFrame(rows)
+
+    assert not long_df.empty
+    print(long_df)
+
 
     wide_df = long_df.pivot_table(
         index=["description", "algorithm"],
@@ -163,7 +173,6 @@ def make_square_reach_heatmap(df: pd.DataFrame):
         cbar_kws={'label': 'Mean return'},
         linewidths=0.5,
         linecolor='white',
-        xticklabels=False
     )
     plt.title("Mean Return per Description and Horizon", fontsize=14)
     plt.xlabel("Horizon", fontsize=12)
@@ -174,6 +183,6 @@ def make_square_reach_heatmap(df: pd.DataFrame):
 
 
 if __name__ == "__main__":
-    res = parse_folder("../results/square_long_horizon/")
+    res = parse_folder("../results/square_sweep/")
     df = process_square_reach_data(res)
     make_square_reach_figures(df)

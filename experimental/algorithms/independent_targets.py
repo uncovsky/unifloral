@@ -20,6 +20,7 @@ import optax
 import tyro
 import wandb
 
+from infra.ensemble_regularization import select_regularizer
 from infra.pretraining import make_pretrain_step
 from infra.offline_dataset_wrapper import OfflineDatasetWrapper
 
@@ -75,10 +76,13 @@ class Args:
     # --- MSG ---
     cql_min_q_weight: float = 0.5
     actor_lcb_coef: float = 4.0
-    # --- Experimental --- 
+    # ---  Pretraining ---
     pretrain_updates : int = 0
     pretrain_loss : str = "bc+sarsa"
     pretrain_lag_init: float = 1.0
+    # --- Diversity --- 
+    ensemble_regularizer : str = "none"
+    reg_lagrangian: float = 1.0
     # --- RPF --- 
     prior: bool = False
     randomized_prior_depth : int = 3
@@ -262,6 +266,9 @@ r"""
 def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset):
     """Make JIT-compatible agent train step."""
 
+    # Select regularizer based on args
+    ensemble_regularizer_fn = select_regularizer(args, actor_apply_fn, q_apply_fn)
+
     def _train_step(runner_state, _):
         rng, agent_state = runner_state
 
@@ -351,20 +358,22 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset):
             )
             return next_q - alpha * log_next_pi.sum(-1)
 
+        # --- Get targets ----
         rng, rng_next_v = jax.random.split(rng)
         rng_next_v = jax.random.split(rng_next_v, args.batch_size)
         next_v_target = jax.vmap(_sample_next_v)(rng_next_v, batch)
-
-        # Expand [B] -> [B, 1] and broadcast to get [B, ensemble_size] targets
         target = jnp.expand_dims(batch.reward, -1) + args.gamma * jnp.expand_dims((1 - batch.done), -1) * next_v_target
 
         # --- Sample actions for CQL ---
         def _sample_actions(rng, obs):
             pi = actor_apply_fn(agent_state.actor.params, obs)
             return pi.sample(seed=rng)
-
         rng, rng_pi = jax.random.split(rng, 2)
         pi_actions = _sample_actions(rng_pi, batch.obs)
+
+        rng, rng_reg, rng_reg_loss = jax.random.split(rng, 3)
+        # --- Get specialized loss function with current state --- 
+        ensemble_reg_loss = ensemble_regularizer_fn(agent_state, rng_reg, batch)
 
         # --- Update critics ---
         @partial(jax.value_and_grad, has_aux=True)
@@ -377,15 +386,18 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset):
             # Q(s,a) for a ~ pi(s), shape [B, ensemble_size]
             pi_q = q_apply_fn(params, batch.obs, pi_actions)
             # [B, 1] for each s in batch, reduce over ensemble dim
-            q_diff = (pi_q - q_pred).sum(-1)
-            min_q_loss = q_diff * args.cql_min_q_weight
+            cql_loss = (pi_q - q_pred).sum(-1).mean()
+            regularizer_loss = ensemble_reg_loss(params, rng_reg_loss, batch)
 
-            critic_loss += min_q_loss.mean()
-            return critic_loss, (q_pred.mean(), q_pred.std(),
+            # CQL regularizer + Diversity regularizer
+            critic_loss += args.cql_min_q_weight * cql_loss
+            critic_loss += args.reg_lagrangian * regularizer_loss
+
+            return critic_loss, (cql_loss, regularizer_loss, q_pred.mean(), q_pred.std(),
                                  pi_q.mean(), pi_q.std())
 
         # unpack aux and get critic grad
-        (critic_loss, (q_pred_mean, q_pred_std, pi_q_mean, pi_q_std)), critic_grad = _q_loss_fn(agent_state.vec_q.params)
+        (critic_loss, (cql_loss, regularizer_loss, q_pred_mean, q_pred_std, pi_q_mean, pi_q_std)), critic_grad = _q_loss_fn(agent_state.vec_q.params)
 
         updated_q = agent_state.vec_q.apply_gradients(grads=critic_grad)
         agent_state = agent_state._replace(vec_q=updated_q)
@@ -394,6 +406,8 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset):
             "critic_loss": critic_loss,
             "actor_loss": actor_loss,
             "alpha_loss": alpha_loss,
+            "cql_loss": cql_loss,
+            "regularizer_loss": regularizer_loss,
             "entropy": entropy,
             "alpha": alpha,
             "actor_q_lcb": q_lcb,
