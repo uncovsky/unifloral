@@ -337,7 +337,6 @@ def eval_agent_gymnasium(args, rng, env, agent_state):
         rng_step = jax.random.split(rng_step, args.eval_workers)
         action = _policy_step(rng_step, jnp.array(obs))
         if first_action:
-            print("First action:", action)
             first_action = False
         obs, reward, terminated, truncated, info = env.step(onp.array(action))
 
