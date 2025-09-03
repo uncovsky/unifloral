@@ -5,7 +5,7 @@ command:
 entity: ahoj
 method: grid
 name: shared_targets 
-program: algorithms/shared_targets.py
+program: algorithms/diverse/shared_targets.py
 project: diverse-shared-targets
 
 parameters:
