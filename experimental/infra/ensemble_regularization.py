@@ -18,11 +18,15 @@ def regularizer_factory(args, actor_apply_fn, q_apply_fn):
             loss_name(agent_state, rng, batch):
                and return a loss that can be differentiated + traced
 
+        The critic loss is constructed by augmenting the original L(theta_i)
+        loss with + lambda * R(theta_1, ... theta_N)               
+
         three level hierarchy:
             1) Factory picks right function when make_train_step is invoked in training
             2) During every train step we specialize based on current state
             (sample actions from curr actor outside grad, etc.)
             3) Innermost loss is the differentiable regularizer called in q_loss_fn
+
     """
 
     """
@@ -46,8 +50,7 @@ def regularizer_factory(args, actor_apply_fn, q_apply_fn):
             3) Maximize 
 
         """
-        rng, rng_actor = jax.random.split(rng, 2)
-        rng_curr, rng_next = jax.random.split(rng_actor, 2)
+        rng, rng_curr, rng_next = jax.random.split(rng, 3)
 
         # Sample one action in each s and s_next, no grad 
         pi_actions = actor_apply_fn(agent_state.actor.params, batch.obs).sample(seed=rng_curr)
@@ -109,7 +112,7 @@ def regularizer_factory(args, actor_apply_fn, q_apply_fn):
 
             # vmap over whole batch
             diversity_loss = jax.vmap(_diversity_loss_fn)(batch.obs, batch.action)
-            return diversity_loss.mean()
+            return diversity_loss.mean() / (args.num_critics - 1)
 
         return _loss_fn
 
