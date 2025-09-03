@@ -359,7 +359,7 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset):
         # --- DIVERSITY: Edac regularizer ---
         def _diversity_loss_fn(obs, action):
             # shape (E, A) ensemble outputs, A inputs (action)
-            action_jac = jax.jacrev(q_apply_fn, argnums=2)(critic_params, obs, action)
+            action_jac = jax.jacrev(q_apply_fn, argnums=2)(agent_state.vec_q.params, obs, action)
             # shape (E,A), normalized gradients for each ensemble member
             action_jac /= jnp.linalg.norm(action_jac, axis=-1, keepdims=True) + 1e-6
             # shape (E,E) pairwise diversity loss
@@ -435,10 +435,9 @@ def train(args):
     # --- DIVERSITY: Get 50 random (s,a) pairs that will be used as OOD data
     num_indices = 50
     indices = jax.random.randint(rng_data, (num_indices,), 0, size)
-    walker_expert_data = Transition(
-        obs=jnp.array(data["observations"])[indices],
-        action=jnp.array(data["actions"])[indices]
-    )
+
+    ood_obs = jnp.array(data["observations"])[indices]
+    ood_action = jnp.array(data["actions"])[indices]
 
     # --- Initialize environment and dataset ---
     rng, rng_env = jax.random.split(rng)
@@ -561,10 +560,11 @@ def train(args):
         print("Step:", step, f"\t Score: {scores.mean():.2f}")
 
         # --- Evaluate metrics on OOD data ---
-        def _compute_statistics(obs, action):
+        def _compute_q_statistics(obs, action):
+            q_values = q_net.apply(agent_state.vec_q.params, obs, action)
             return q_values.std(), q_values.mean(), q_values.min()
-        ood_std, ood_mean, ood_min = _compute_q_std(walker_expert_data.obs, walker_expert_data.action)
 
+        ood_std, ood_mean, ood_min = _compute_q_statistics(ood_obs, ood_action)
         if args.log:
             log_dict = {
                 "return": returns.mean(),
