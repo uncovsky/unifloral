@@ -54,7 +54,7 @@ parameters:
 
   # --- SAC-N ---
   num_critics:
-    values: [10, 30]
+    value: 10
 
   # --- pretraining
   pretrain_updates:
@@ -63,10 +63,10 @@ parameters:
   # --- diversity
   ensemble_regularizer:
     values:
-      - std
       - mean_vector
+      - std
       - edac
       - none
   reg_lagrangian:
-    value: 1.0
+    values: [0.01, 0.1]
   # --- Test prior later

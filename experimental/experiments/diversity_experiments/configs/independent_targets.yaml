@@ -54,11 +54,11 @@ parameters:
 
   # --- SAC-N ---
   num_critics:
-    values: [10, 30]
+    value: 10
 
   # --- MSG ---
   cql_min_q_weight: 
-    values : [1.0, 2.0]
+    value: 0.2
   actor_lcb_coef : 
     values : [4.0]
 
@@ -74,5 +74,5 @@ parameters:
       - edac
       - none
   reg_lagrangian:
-    value: 1.0
+    values: [0.01, 0.1]
   # --- Test prior later
