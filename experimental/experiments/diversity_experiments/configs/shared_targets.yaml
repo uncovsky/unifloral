@@ -5,7 +5,7 @@ command:
 entity: ahoj
 method: grid
 name: shared_targets 
-program: algorithms/diverse/shared_targets.py
+program: algorithms/diversity/shared_targets.py
 project: diverse-shared-targets
 
 parameters:
@@ -16,7 +16,7 @@ parameters:
   dataset-source:
     value: d4rl
   dataset-name:
-    values: - walker2d-medium-v2
+    value: walker2d-medium-v2
   algorithm:
     value: shared_targets
   num_updates:
@@ -44,7 +44,7 @@ parameters:
   batch_size:
     value: 256
   gamma:
-    value: 0.999
+    value: 0.99
   polyak_step_size:
     value: 0.005
 
@@ -59,14 +59,17 @@ parameters:
   # --- diversity
   ensemble_regularizer:
     values:
-      - mean_vector
       - std
       - edac
       - none
   reg_lagrangian:
     values: [0.01, 0.1]
-  # --- Test prior later
   prior:
     values:
       - True
       - False
+  randomized_prior_depth:
+    values:
+      - 3
+      - 5
+
