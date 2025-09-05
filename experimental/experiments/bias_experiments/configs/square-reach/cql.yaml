@@ -12,7 +12,7 @@ parameters:
   # --- Experiment ---
   seed:
     #values: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
-    values: [0, 1, 2]
+    values: [0, 1, 2, 3, 4]
   dataset-source:
     value: minari
   dataset-name:
@@ -68,6 +68,6 @@ parameters:
   cql_temperature:
     value: 1.0
   cql_min_q_weight:
-    value : 0.1
+    values : [0.1, 1.0]
 
   # --- Experimental ---
