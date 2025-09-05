@@ -18,13 +18,13 @@ parameters:
   dataset-name:
     values: 
       - square-reach/horizon-10-expert-v0
-      - square-reach/horizon-10-mixed-v0
+      - square-reach/horizon-10-medium-v0
       - square-reach/horizon-10-low-v0
       - square-reach/horizon-50-expert-v0
-      - square-reach/horizon-50-mixed-v0
+      - square-reach/horizon-50-medium-v0
       - square-reach/horizon-50-low-v0
       - square-reach/horizon-200-expert-v0
-      - square-reach/horizon-200-mixed-v0
+      - square-reach/horizon-200-medium-v0
       - square-reach/horizon-200-low-v0
   algorithm:
     value: shared_targets
