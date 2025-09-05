@@ -1,5 +1,5 @@
 nice -n 19 podman run -d \
-                      --device nvidia.com/gpu=1 \
+                      --gpus all \
                       --shm-size=1g \
                       --ulimit memlock=-1 \
                       --ulimit stack=67108864 \
