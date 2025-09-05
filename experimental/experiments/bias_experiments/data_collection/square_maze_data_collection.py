@@ -86,8 +86,7 @@ def collect_dataset(H, random_portion,
                 if dist(obs, gx, gy) < 2 * step_size:
                     wp_reached = True
             else:
-                # navigate back to origin 
-                a = action_to_goal(obs, 0.0, 0.0)
+                a = np.random.uniform(-1.0, 1.0, size=(1,)).astype(np.float32)
             next_obs, reward, terminated, truncated, _ = collecting_env.step(a)
             obs = next_obs
 

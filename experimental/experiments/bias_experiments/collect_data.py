@@ -10,7 +10,7 @@ if __name__ == "__main__":
 
     print("Collecting data for Square Maze...")
     horizons = [10, 50, 200]
-    dataset_size = 500
+    dataset_size = 1000
 
     # ratios of random trajectories in the dataset
     ratios = [0.0, 0.5, 0.75]
