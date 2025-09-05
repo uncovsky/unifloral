@@ -9,13 +9,18 @@ from data_collection.square_maze_data_collection import collect_dataset
 if __name__ == "__main__":
 
     print("Collecting data for Square Maze...")
-    horizons = [10, 20, 50, 100, 200]
-    dataset_size = 5000
-    seeds = [0, 1, 2, 3, 4]
+    horizons = [10, 50, 200]
+    dataset_size = 500
 
-    for i, H in enumerate(horizons):
-        print(f"Collecting dataset for horizon = {H}...")
-        collect_dataset(H=H, episodes=dataset_size, seed=seeds[i])
+    # ratios of random trajectories in the dataset
+    ratios = [0.0, 0.5, 0.75]
+
+    seed = 0
+
+    for horizon in horizons:
+        for ratio in ratios:
+            print(f"Horizon: {horizon}, Random portion: {ratio}")
+            collect_dataset(horizon, ratio, dataset_size, seed)
 
     print("Collecting data for Pendulum-v1...")
     env = gym.make("Pendulum-v1")
