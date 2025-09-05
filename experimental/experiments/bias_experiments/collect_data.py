@@ -20,6 +20,7 @@ if __name__ == "__main__":
     for horizon in horizons:
         for ratio in ratios:
             print(f"Horizon: {horizon}, Random portion: {ratio}")
+            seed += 1
             collect_dataset(horizon, ratio, dataset_size, seed)
 
     print("Collecting data for Pendulum-v1...")
