@@ -13,13 +13,13 @@ if __name__ == "__main__":
     dataset_size = 1000
 
     # ratios of random trajectories in the dataset
-    ratios = [0.0, 0.5, 0.75]
+    noise = [0.1, 0.2, 0.3]
 
     seed = 0
 
     for horizon in horizons:
         for ratio in ratios:
-            print(f"Horizon: {horizon}, Random portion: {ratio}")
+            print(f"Horizon: {horizon}, gaussian noise: {noise}")
             seed += 1
             collect_dataset(horizon, ratio, dataset_size, seed)
 

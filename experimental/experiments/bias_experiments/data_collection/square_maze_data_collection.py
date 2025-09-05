@@ -14,24 +14,11 @@ def action_to_goal(obs, gx, gy):
     return a
 
 
-def generate_waypoint():
-    # Generate a waypoint in 2/4-th quadrant
-    rand = np.random.uniform()
-    if rand < 0.5:
-        # 2nd quadrant
-        gx, gy = np.random.uniform(0.0, 0.5), np.random.uniform(0.5, 1.0)
-    else:
-        # 4th quadrant
-        gx, gy = np.random.uniform(0.5, 1.0), np.random.uniform(0.0, 0.5)
-
-    return gx, gy
-
-
 def dist(obs, gx, gy):
     return np.sqrt((obs[0] - gx)**2 + (obs[1] - gy)**2)
 
 
-def collect_dataset(H, random_portion, 
+def collect_dataset(H, noise_eps, 
                        episodes=1000,
                        seed=0):
 
@@ -44,8 +31,6 @@ def collect_dataset(H, random_portion,
         Phase two - sample random waypoint, navigate to goal
     
     """
-
-    assert(0.0 <= random_portion <= 1.0), "random portion must be in [0, 1]"
 
     env = gym.make("SquareReachEnv-v0", H=H, render_mode="human")
 
@@ -64,69 +49,25 @@ def collect_dataset(H, random_portion,
     step_size = env.unwrapped.step_size
 
 
-
-
-    random_episodes = int(episodes * random_portion)
-
-    for ep in range(random_episodes):
+    for ep in range(episodes):
 
         obs, _ = collecting_env.reset()
         done = False
 
-        gx, gy = generate_waypoint()
-        wp_reached = False
-
-
         while not done:
-            if not wp_reached:
-                # navigate to waypoint deterministically
-                a = action_to_goal(obs, gx, gy)
-
-                # will be within step size after this step
-                if dist(obs, gx, gy) < 2 * step_size:
-                    wp_reached = True
-            else:
-                a = np.random.uniform(-1.0, 1.0, size=(1,)).astype(np.float32)
+            a = action_to_goal(obs, 1.0, 1.0)
+            a += np.random.normal(0, noise_eps, size=a.shape)
+            np.clip(a, -1.0, 1.0, out=a)
             next_obs, reward, terminated, truncated, _ = collecting_env.step(a)
             obs = next_obs
-
             done = terminated or truncated
 
-
-    # phase two
-
-    for ep in range(episodes - random_episodes):
-
-        obs, _ = collecting_env.reset()
-        done = False
-
-        gx, gy = generate_waypoint()
-        wp_reached = False
-
-        while not done:
-            if not wp_reached:
-                # navigate to waypoint deterministically
-                a = action_to_goal(obs, gx, gy)
-                # will be within step size after this step
-                if dist(obs, gx, gy) < 2 * step_size:
-                    wp_reached = True
-            else:
-                # navigate to goal 
-                a = action_to_goal(obs, 1.0, 1.0)
-            next_obs, reward, terminated, truncated, _ = collecting_env.step(a)
-            obs = next_obs
-
-            done = terminated or truncated
 
     env.unwrapped.plot_trajectories()
 
-    name_label = "low"
-    if random_portion <= 0.5:
-        name_label = "medium"
-    if random_portion == 0.0:
-        name_label = "expert"
+    noise_eps = int(noise_eps*10)
 
-    dataset_id = f"square-reach/horizon-{H}-{name_label}-v0"
+    dataset_id = f"square-reach/horizon-{H}-eps{noise_eps}-v0"
 
     collecting_env.create_dataset(
         dataset_id=dataset_id,
@@ -135,6 +76,6 @@ def collect_dataset(H, random_portion,
         ref_max_score=1.0,
         algorithm_name="uniform",
         author="uncovsky",
-        description=f"Simple goal reaching env to test reward propagation, horizon {H}, {random_portion} portion of random trajectories")
+        description=f"Simple goal reaching env to test reward propagation, horizon {H}, noise={noise_eps}",)
 
     env.close()
