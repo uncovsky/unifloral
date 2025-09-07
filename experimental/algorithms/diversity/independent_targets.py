@@ -442,6 +442,7 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset):
             "alpha_loss": alpha_loss,
             "cql_loss": cql_loss,
             "regularizer_loss": regularizer_loss,
+            "diversity_loss": diversity_loss_val,
             "entropy": entropy,
             "alpha": alpha,
             "actor_q_lcb": q_lcb,
