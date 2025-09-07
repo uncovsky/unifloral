@@ -76,7 +76,7 @@ class Args:
     # --- SAC-N ---
     num_critics: int = 10
     # --- MSG ---
-    pi_operator: str = "lcb"
+    pi_operator: str = "min"
     cql_min_q_weight: float = 0.5
     actor_lcb_coef: float = 4.0
     # ---  Pretraining ---
@@ -340,7 +340,7 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset):
                     q_tgt = q_values.mean(-1) - args.actor_lcb_coef * std_q
 
                 else:
-                    # min, like in PBRL
+                    # min in PI, like in PBRL
                     q_tgt = q_values.min(-1)
 
                 return -q_tgt + alpha * log_pi, -log_pi, q_tgt, std_q
