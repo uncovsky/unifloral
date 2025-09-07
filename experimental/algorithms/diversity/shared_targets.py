@@ -20,11 +20,11 @@ import optax
 import tyro
 import wandb
 
-from infra.ensemble_regularization import select_regularizer
-from infra.pretraining import make_pretrain_step
 from infra.diversity_utils import diversity_loss, prepare_ood_dataset, \
     compute_qvalue_statistics, get_diversity_statistics
+from infra.ensemble_regularization import select_regularizer
 from infra.offline_dataset_wrapper import OfflineDatasetWrapper
+from infra.pretraining import make_pretrain_step
 
 os.environ["XLA_FLAGS"] = "--xla_gpu_triton_gemm_any=True"
 

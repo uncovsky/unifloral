@@ -59,5 +59,9 @@ parameters:
   # --- RFP
   prior:
     values:
-      - False
+      - True
+  randomized_prior_depth:
+    values:
+      - 3
+      - 5
 
