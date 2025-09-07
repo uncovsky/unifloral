@@ -510,10 +510,10 @@ def train(args):
             print("Step:", step, f"\t Score: {scores.mean():.2f}")
 
             # --- DIVERSITY: get info on OOD data ---
-            ood_std, ood_mean, ood_min = compute_qvalue_statistics(q_net.apply,
-                                                                   agent_state,
-                                                                   ood_obs, 
-                                                                   ood_actions)
+            ood_stats = compute_qvalue_statistics(q_net.apply,
+                                                  agent_state,
+                                                  ood_obs, 
+                                                  ood_actions)
             if args.log:
                 log_dict = {
                     "return": returns.mean(),
@@ -521,9 +521,9 @@ def train(args):
                     "score_std": scores.std(),
                     "num_updates": step,
                     **{k: loss[k][-1] for k in loss},
-                    "ood_q_std": ood_std,
-                    "ood_q_mean": ood_mean,
-                    "ood_q_min": ood_min,
+                    "ood_q_std": ood_stats["std"],
+                    "ood_q_mean": ood_stats["mean"],
+                    "ood_q_min": ood_stats["min"],
                 }
                 wandb.log(log_dict)
 
@@ -556,10 +556,10 @@ def train(args):
         print("Step:", step, f"\t Score: {scores.mean():.2f}")
 
         # --- DIVERSITY: get info on OOD data ---
-        ood_std, ood_mean, ood_min = compute_qvalue_statistics(q_net.apply,
-                                                               agent_state,
-                                                               ood_obs, 
-                                                               ood_actions)
+        ood_stats = compute_qvalue_statistics(q_net.apply,
+                                              agent_state,
+                                              ood_obs, 
+                                              ood_actions)
         if args.log:
             log_dict = {
                 "return": returns.mean(),
@@ -567,9 +567,9 @@ def train(args):
                 "score_std": scores.std(),
                 "num_updates": step,
                 **{k: loss[k][-1] for k in loss},
-                "ood_q_std": ood_std,
-                "ood_q_mean": ood_mean,
-                "ood_q_min": ood_min,
+                "ood_q_std": ood_stats["std"],
+                "ood_q_mean": ood_stats["mean"],
+                "ood_q_min": ood_stats["min"],
             }
             wandb.log(log_dict)
 
