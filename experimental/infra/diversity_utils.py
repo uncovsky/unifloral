@@ -12,6 +12,11 @@ def diversity_loss(q_apply_fn, agent_state, obs, actions, num_critics):
         Compute EDAC diversity loss for a batch of s,a pairs
     """
     def _diversity_loss_fn(obs, action):
+
+        """
+            Compute <nabla_a Q_i(s,a), nabla_a Q_j(s,a)> for all i,j
+            for a single (s,a) pair.
+        """
         # shape (E, A) ensemble outputs, A inputs (action)
         action_jac = jax.jacrev(q_apply_fn, argnums=2)(agent_state.vec_q.params, obs, action)
         # shape (E,A), normalized gradients for each ensemble member
