@@ -510,7 +510,7 @@ def train(args):
             print("Step:", step, f"\t Score: {scores.mean():.2f}")
 
             # --- DIVERSITY: get info on OOD data ---
-            ood_std, ood_mean, ood_min = compute_qvalue_statistics(q_apply_fn,
+            ood_std, ood_mean, ood_min = compute_qvalue_statistics(q_net.apply,
                                                                    agent_state,
                                                                    ood_obs, 
                                                                    ood_actions)
@@ -556,7 +556,7 @@ def train(args):
         print("Step:", step, f"\t Score: {scores.mean():.2f}")
 
         # --- DIVERSITY: get info on OOD data ---
-        ood_std, ood_mean, ood_min = compute_qvalue_statistics(q_apply_fn,
+        ood_std, ood_mean, ood_min = compute_qvalue_statistics(q_net.apply,
                                                                agent_state,
                                                                ood_obs, 
                                                                ood_actions)
