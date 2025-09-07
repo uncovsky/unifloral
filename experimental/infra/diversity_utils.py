@@ -37,7 +37,7 @@ def prepare_ood_dataset(rng, dataset_name="walker2d-expert-v2", ood_samples=50):
             diversity on unseen states.
     """
 
-    walker_expert_wrapper = OfflineDatasetWrapper(source=args.dataset_source,
+    walker_expert_wrapper = OfflineDatasetWrapper(source="d4rl",
                                                   dataset=dataset_name)
     data = walker_expert_wrapper.get_dataset()
     size = len(data["observations"])
