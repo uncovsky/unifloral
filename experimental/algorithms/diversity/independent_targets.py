@@ -431,7 +431,7 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset):
                                                    agent_state, rng_perturb,
                                                    batch.obs, batch.action)
         # unpack aux and get critic grad
-        (critic_loss, (cql_loss, regularizer_loss), critic_grad = _q_loss_fn(agent_state.vec_q.params)
+        (critic_loss, (cql_loss, regularizer_loss)), critic_grad = _q_loss_fn(agent_state.vec_q.params)
 
         updated_q = agent_state.vec_q.apply_gradients(grads=critic_grad)
         agent_state = agent_state._replace(vec_q=updated_q)
