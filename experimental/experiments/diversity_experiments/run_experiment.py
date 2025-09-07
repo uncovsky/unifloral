@@ -11,7 +11,7 @@ def run_experiment(entity, project, prior=False):
     if prior:
         sweep_folder(folder_priors, entity, project)
     else:
-    s   weep_folder(folder, entity, project)
+        sweep_folder(folder, entity, project)
 
 if __name__ == "__main__":
     import argparse
