@@ -1,5 +1,6 @@
 import jax
 import jax.numpy as jnp
+from infra.offline_dataset_wrapper import OfflineDatasetWrapper
 
 """
     A collection of utility functions used to measure
@@ -18,7 +19,7 @@ def diversity_loss(batch, num_critics):
         # shape (E,E) pairwise diversity loss
         div_loss = action_jac @ action_jac.T
         # Mask diagonal 
-        div_loss *= 1.0 - jnp.eye(args.num_critics)
+        div_loss *= 1.0 - jnp.eye(num_critics)
         return div_loss.sum()
 
     # vmap over whole batch
