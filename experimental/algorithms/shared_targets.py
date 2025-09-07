@@ -99,23 +99,36 @@ r"""
 AgentTrainState = namedtuple("AgentTrainState", "actor vec_q vec_q_target alpha pretrain_lag")
 Transition = namedtuple("Transition", "obs action reward next_obs next_action done")
 
-
+"""
+    Initializers
+"""
 def sym(scale):
     def _init(*args, **kwargs):
         return uniform(2 * scale)(*args, **kwargs) - scale
 
     return _init
 
+he_normal = nn.initializers.variance_scaling(
+    scale=2.0,
+    mode="fan_in",
+    distribution="truncated_normal" 
+)
 
 class SoftQNetwork(nn.Module):
     depth: int = 3
+    learnable: bool = True
     @nn.compact
     def __call__(self, obs, action):
         x = jnp.concatenate([obs, action], axis=-1)
         for _ in range(self.depth):
             x = nn.Dense(256, bias_init=constant(0.1))(x)
             x = nn.relu(x)
-        q = nn.Dense(1, kernel_init=sym(3e-3), bias_init=sym(3e-3))(x)
+        # For learnable Q-nets, we use a different last layer init
+        if self.learnable:
+            q = nn.Dense(1, kernel_init=sym(3e-3), bias_init=sym(3e-3))(x)
+        else:
+            q = nn.Dense(1, kernel_init=he_normal, bias_init=sym(3e-3))(x)
+
         return q.squeeze(-1)
 
 class RandomizedPriorQNetwork(nn.Module):
@@ -123,8 +136,8 @@ class RandomizedPriorQNetwork(nn.Module):
     scale: float  
     @nn.compact
     def __call__(self, obs, action):
-        q_learnable = SoftQNetwork()(obs, action)
-        prior_net = SoftQNetwork(depth=self.depth, name="prior_q_network")
+        q_learnable = SoftQNetwork(learnable=True, name="learnable_q_network")(obs, action)
+        prior_net = SoftQNetwork(learnable=False, depth=self.depth, name="prior_q_network")
         q_prior = prior_net(obs, action)
         # make sure to not prop grad thru prior net
         q_prior = jax.lax.stop_gradient(q_prior)
