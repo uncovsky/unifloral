@@ -7,7 +7,7 @@ from infra.offline_dataset_wrapper import OfflineDatasetWrapper
     ensemble diversity in experiments.
 """
 
-def diversity_loss(q_apply_fn, obs, actions, num_critics):
+def diversity_loss(q_apply_fn, agent_state, obs, actions, num_critics):
     """
         Compute EDAC diversity loss for a batch of s,a pairs
     """
