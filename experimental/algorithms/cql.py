@@ -374,8 +374,8 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset):
 
             rand_q = q_apply_fn(params, batch.obs, cql_random_actions)
             pi_q = q_apply_fn(params, batch.obs, pi_actions)
-            # Note: Source implementation erroneously uses current obs in next_pi_q
-            next_pi_q = q_apply_fn(params, batch.next_obs, pi_next_actions)
+            # changed obs to current obs, not next_obs
+            next_pi_q = q_apply_fn(params, batch.obs, pi_next_actions)
             all_qs = jnp.concatenate([rand_q, pi_q, next_pi_q, q_pred], axis=1)
             q_ood = jax.scipy.special.logsumexp(all_qs / args.cql_temperature, axis=1)
             q_ood = jax.lax.stop_gradient(q_ood * args.cql_temperature)

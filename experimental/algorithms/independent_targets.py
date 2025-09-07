@@ -74,6 +74,7 @@ class Args:
     # --- SAC-N ---
     num_critics: int = 10
     # --- MSG ---
+    pi_operator: str = "lcb"
     cql_min_q_weight: float = 0.5
     actor_lcb_coef: float = 4.0
     # ---  Pretraining ---
@@ -269,6 +270,11 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset):
     # Select regularizer based on args
     ensemble_regularizer_fn = select_regularizer(args, actor_apply_fn, q_apply_fn)
 
+    if args.pi_operator != "lcb":
+        print("using min in actor update")
+    else:
+        print(f"using lcb with coef {args.actor_lcb_coef} in actor update")
+
     def _train_step(runner_state, _):
         rng, agent_state = runner_state
 
@@ -311,11 +317,18 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset):
                 q_values = q_apply_fn(
                     agent_state.vec_q.params, transition.obs, sampled_action
                 )
+
                 # calculate LCB over ensemble
                 std_q = q_values.std(-1)
-                q_lcb = q_values.mean(-1) - args.actor_lcb_coef * std_q
 
-                return -q_lcb + alpha * log_pi, -log_pi, q_lcb, std_q
+                if args.pi_operator == "lcb":
+                    q_tgt = q_values.mean(-1) - args.actor_lcb_coef * std_q
+
+                else:
+                    # min, like in PBRL
+                    q_tgt = q_values.min(-1)
+
+                return -q_tgt + alpha * log_pi, -log_pi, q_tgt, std_q
 
             rng = jax.random.split(rng, args.batch_size)
             loss, entropy, q_lcb, q_std = jax.vmap(_compute_loss)(rng, batch)
