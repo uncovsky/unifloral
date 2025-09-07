@@ -106,6 +106,16 @@ def get_diversity_statistics(q_apply_fn, actor_apply_fn, agent_state, rng, obs, 
         "noise_small_q_std": noise_small_stats["std"],
         "noise_large_q_std": noise_large_stats["std"],
         "uniform_q_std": uniform_stats["std"]
+        "batch_q_min": batch_stats["min"],
+        "pi_q_min": pi_stats["min"],
+        "noise_small_q_min": noise_small_stats["min"],
+        "noise_large_q_min": noise_large_stats["min"],
+        "uniform_q_min": uniform_stats["min"],
+        "batch_q_mean": batch_stats["mean"],
+        "pi_q_mean": pi_stats["mean"],
+        "noise_small_q_mean": noise_small_stats["mean"],
+        "noise_large_q_mean": noise_large_stats["mean"],
+        "uniform_q_mean": uniform_stats["mean"],
     }
 
     return diversity_stats

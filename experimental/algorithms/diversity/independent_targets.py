@@ -20,9 +20,11 @@ import optax
 import tyro
 import wandb
 
+from infra.diversity_utils import diversity_loss, prepare_ood_dataset, \
+    compute_qvalue_statistics, get_diversity_statistics
 from infra.ensemble_regularization import select_regularizer
-from infra.pretraining import make_pretrain_step
 from infra.offline_dataset_wrapper import OfflineDatasetWrapper
+from infra.pretraining import make_pretrain_step
 
 os.environ["XLA_FLAGS"] = "--xla_gpu_triton_gemm_any=True"
 
@@ -346,10 +348,10 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset):
             rng = jax.random.split(rng, args.batch_size)
             loss, entropy, q_lcb, q_std = jax.vmap(_compute_loss)(rng, batch)
             # compute mean q-value and estimate std over actions
-            return loss.mean(), (entropy.mean(), q_lcb.mean(), q_std.mean())
+            return loss.mean(), (entropy.mean(), q_lcb.mean())
 
         rng, rng_actor = jax.random.split(rng)
-        (actor_loss, (entropy, q_lcb, q_std)), actor_grad = (
+        (actor_loss, (entropy, q_lcb)), actor_grad = (
             _actor_loss_function(agent_state.actor.params, rng_actor)
         )
         updated_actor = agent_state.actor.apply_gradients(grads=actor_grad)
@@ -419,11 +421,17 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset):
             critic_loss += args.cql_min_q_weight * cql_loss
             critic_loss += args.reg_lagrangian * regularizer_loss
 
-            return critic_loss, (cql_loss, regularizer_loss, q_pred.mean(), q_pred.std(),
-                                 pi_q.mean(), pi_q.std())
+            return critic_loss, (cql_loss, regularizer_loss)
 
+        # --- DIVERSITY: calculate EDAC loss --- 
+        diversity_loss_val = diversity_loss(q_apply_fn, agent_state, batch.obs, batch.action, args.num_critics)
+        # --- DIVERSITY: get ensemble stats for logging ---
+        rng_perturb, rng = jax.random.split(rng)
+        diversity_stats = get_diversity_statistics(q_apply_fn, actor_apply_fn,
+                                                   agent_state, rng_perturb,
+                                                   batch.obs, batch.action)
         # unpack aux and get critic grad
-        (critic_loss, (cql_loss, regularizer_loss, q_pred_mean, q_pred_std, pi_q_mean, pi_q_std)), critic_grad = _q_loss_fn(agent_state.vec_q.params)
+        (critic_loss, (cql_loss, regularizer_loss), critic_grad = _q_loss_fn(agent_state.vec_q.params)
 
         updated_q = agent_state.vec_q.apply_gradients(grads=critic_grad)
         agent_state = agent_state._replace(vec_q=updated_q)
@@ -437,11 +445,11 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset):
             "entropy": entropy,
             "alpha": alpha,
             "actor_q_lcb": q_lcb,
-            "q_pred_mean" : q_pred_mean,
-            "q_pred_std": q_pred_std,
-            "pi_q_mean": pi_q_mean,
-            "pi_q_std": pi_q_std
         }
+
+        # --- DIVERSITY: add info to logs
+        for k, v in diversity_stats.items():
+            loss[k] = v
 
         return (rng, agent_state), loss
 
@@ -467,18 +475,10 @@ def train(args):
     # --- DIVERSITY: Load expert dataset for walker
     if args.dataset_name.split("-")[0] != "walker2d":
         print("This is a mock used to test walker2d, don't use a different dataset")
-    walker_expert_wrapper = OfflineDatasetWrapper(source=args.dataset_source,
-                                                  dataset="walker2d-expert-v2")
-    rng, rng_data = jax.random.split(rng)
-    data = walker_expert_wrapper.get_dataset()
-    size = len(data["observations"])
-
-    # --- DIVERSITY: Get 50 random (s,a) pairs that will be used as OOD data
-    num_indices = 50
-    indices = jax.random.randint(rng_data, (num_indices,), 0, size)
-    ood_obs = jnp.array(data["observations"])[indices]
-    ood_action = jnp.array(data["actions"])[indices]
-
+    rng_data, rng = jax.random.split(rng)
+    ood_obs, ood_actions = prepare_ood_dataset(
+        rng_data, dataset_name="walker2d-expert-v2", ood_samples=50
+    )
 
     # --- Initialize environment and dataset ---
     rng, rng_env = jax.random.split(rng)
@@ -559,9 +559,12 @@ def train(args):
             # --- Log metrics ---
             step = (eval_idx + 1) * args.eval_interval
             print("Step:", step, f"\t Score: {scores.mean():.2f}")
-            print("Actor loss: ", loss["actor_loss"][-1])
-            print("Critic loss: ", loss["critic_loss"][-1])
 
+            # --- DIVERSITY: get info on OOD data ---
+            ood_stats = compute_qvalue_statistics(q_net.apply,
+                                                  agent_state,
+                                                  ood_obs, 
+                                                  ood_actions)
             if args.log:
                 log_dict = {
                     "return": returns.mean(),
@@ -569,6 +572,9 @@ def train(args):
                     "score_std": scores.std(),
                     "num_updates": step,
                     **{k: loss[k][-1] for k in loss},
+                    "ood_q_std": ood_stats["std"],
+                    "ood_q_mean": ood_stats["mean"],
+                    "ood_q_min": ood_stats["min"],
                 }
                 wandb.log(log_dict)
 
@@ -599,6 +605,12 @@ def train(args):
         # --- Log metrics ---
         step = (eval_idx + 1 + pretrain_evals) * args.eval_interval
         print("Step:", step, f"\t Score: {scores.mean():.2f}")
+
+        # --- DIVERSITY: get info on OOD data ---
+        ood_stats = compute_qvalue_statistics(q_net.apply,
+                                              agent_state,
+                                              ood_obs, 
+                                              ood_actions)
         if args.log:
             log_dict = {
                 "return": returns.mean(),
@@ -606,6 +618,9 @@ def train(args):
                 "score_std": scores.std(),
                 "num_updates": step,
                 **{k: loss[k][-1] for k in loss},
+                "ood_q_std": ood_stats["std"],
+                "ood_q_mean": ood_stats["mean"],
+                "ood_q_min": ood_stats["min"],
             }
             wandb.log(log_dict)
 
