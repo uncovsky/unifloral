@@ -48,7 +48,6 @@ def collect_dataset(H, noise_eps,
     # get step size
     step_size = env.unwrapped.step_size
 
-
     for ep in range(episodes):
 
         obs, _ = collecting_env.reset()
