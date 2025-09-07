@@ -7,7 +7,7 @@ from infra.offline_dataset_wrapper import OfflineDatasetWrapper
     ensemble diversity in experiments.
 """
 
-def diversity_loss(batch, num_critics):
+def diversity_loss(q_apply_fn, obs, actions, num_critics):
     """
         Compute EDAC diversity loss for a batch of s,a pairs
     """
@@ -23,7 +23,7 @@ def diversity_loss(batch, num_critics):
         return div_loss.sum()
 
     # vmap over whole batch
-    diversity_loss = jax.vmap(_diversity_loss_fn)(batch.obs, batch.action)
+    diversity_loss = jax.vmap(_diversity_loss_fn)(obs, actions)
     diversity_loss = diversity_loss.mean() / (num_critics - 1)
     return diversity_loss
 
