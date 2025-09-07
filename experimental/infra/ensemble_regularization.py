@@ -68,6 +68,33 @@ def regularizer_factory(args, actor_apply_fn, q_apply_fn):
         return _loss_fn
 
 
+    def ood_sampling_loss(agent_state, rng, batch):
+        """
+            OOD sampling loss used in PBRL and Dynamic Uncertainty estimation
+
+            TODO: unsupported std coefficient for now (fixed to 1.0)
+        """
+
+        pi_actions = actor_apply_fn(agent_state.actor.params, batch.obs).sample(seed=rng_curr)
+
+        def _loss_fn(critic_params, rng, batch):
+
+            q_values_curr = q_apply_fn(critic_params, batch.obs, pi_actions)
+            # ensemble stds across the state batch (B, E) -> (B, 1)
+            stds = jnp.std(q_values_curr, axis=1, keepdims=True)
+
+            # Q - std, TODO: add the coeff here!
+            ood_target = jnp.maximum(q_values_curr - stds, 0.0)
+            ood_target = jax.lax.stop_gradient(ood_target)
+
+            ood_loss = (q_values_curr - ood_target) ** 2
+
+            # sum over ensemble, mean over batch
+            return ood_loss.sum(axis=1).mean()
+        return _loss_fn
+
+
+
 
     def mean_vector_loss(agent_state, rng, batch):
         """ 
