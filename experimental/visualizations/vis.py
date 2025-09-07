@@ -12,7 +12,12 @@ from vis_utils import parse_and_load_npz, parse_folder
 
 
 def process_square_reach_data(df: pd.DataFrame):
-    print("Processing square-reach data...")
+    # save raw df
+
+    returns = df[[col for col in df.columns if "final_returns" in col]]
+    returns.to_csv("csv/square_reach_raw.csv", index=False)
+
+
     # relevant hyperparams for different algorithms
     cql_params = ['cql_temperature', 'cql_min_q_weight']
     shared_params = ['num_critics']
@@ -38,14 +43,11 @@ def process_square_reach_data(df: pd.DataFrame):
     df[object_cols] = df[object_cols].astype(str)
     df = df[[col for col in df.columns if col not in filter_columns]]
 
-
     df["final_returns_mean"] = df["final_returns_mean"].astype(float)
-
+    df["final_returns_std"] = df["final_returns_std"].astype(float)
     algorithms = df['algorithm'].unique()
 
-
     # algo name+hyperparams, dataset1_mean, dataset2_mean, ...
-
     rows = []
 
     for algo in algorithms:
@@ -62,11 +64,15 @@ def process_square_reach_data(df: pd.DataFrame):
 
         grouped = (
             algo_df.groupby(hyperparams + ['dataset_name'])
-            .agg(final_returns_mean=('final_returns_mean', 'mean'))
+            .agg(
+                final_returns_mean=('final_returns_mean', 'mean'),
+                final_returns_std=('final_returns_std', 'mean')
+            )
             .reset_index()
         )
-
         
+        grouped.to_csv(f"csv/{algo}_grouped.csv", index=False)
+
         # Build a string label: algo + hyperparam settings
         for group, row in grouped.iterrows():
             desc_parts = [f"{algo}"]
@@ -74,21 +80,26 @@ def process_square_reach_data(df: pd.DataFrame):
             desc = ", ".join(desc_parts)
 
             text = row["dataset_name"]
-            horizon = re.search(r"\d+", text)
+            match = re.search(r"horizon-(\d+)-eps(\d+)", text)
 
-            print(horizon)
-            
+            eps = int(match.group(2))
+            mapping = {1: "low", 2: "medium", 3: "high"}
+            level = mapping.get(eps, "unknown")           
+
+            dataset_name = "horizon-" + match.group(1) + "-" + level
             rows.append({
                 "description": desc,
-                "dataset": int(horizon.group()),
+                "dataset": dataset_name,
+                "horizon": int(match.group(1)),
+                "level": level,
                 "algorithm": algo,
-                "final_returns_mean": row["final_returns_mean"]
+                "final_returns_mean": row["final_returns_mean"],
+                "final_returns_std": row["final_returns_std"],
             })
 
     long_df = pd.DataFrame(rows)
 
     assert not long_df.empty
-    print(long_df)
 
 
     wide_df = long_df.pivot_table(
@@ -101,7 +112,7 @@ def process_square_reach_data(df: pd.DataFrame):
     # save to csv
     os.makedirs("csv", exist_ok=True)
     wide_df.to_csv("csv/square_reach_results.csv", index=False)
-    return wide_df
+    return long_df
 
 def make_square_reach_figures(df: pd.DataFrame):
     """
@@ -110,79 +121,96 @@ def make_square_reach_figures(df: pd.DataFrame):
 
     # create figures directory
     os.makedirs("figures", exist_ok=True)
-    make_square_reach_lineplot(df)
     make_square_reach_heatmap(df)
 
 
+def format_algo(row):
+    "translate back to hyperparams from desc"
 
-def make_square_reach_lineplot(df: pd.DataFrame):
-    sns.set(style="whitegrid")  # nicer grid background
-    palette = sns.color_palette("tab10")  # 10 distinct colors
+    desc = row["description"]
 
-    algorithms = df['algorithm'].unique()
-    horizon_cols = sorted([col for col in df.columns if col not in ['description', 'algorithm']])
-    x = np.arange(len(horizon_cols))
-    # Plot per algorithm
-    for algo in algorithms:
-        plt.figure(figsize=(6,4))
-        subset = df[df['algorithm'] == algo]
-        for i, (_, row) in enumerate(subset.iterrows()):
-            plt.plot(x, row[horizon_cols], marker='o', alpha=0.8, 
-                     label=row['description'], color=palette[i % len(palette)], linewidth=2)
-        plt.title(f"{algo} results", fontsize=14)
-        plt.xlabel("Horizon", fontsize=12)
-        plt.ylabel("Mean final result", fontsize=12)
-        plt.xticks(x, ['']*len(x))
-        plt.legend(fontsize=8)
-        plt.tight_layout()
-        
-        # save
-        safe_algo_name = re.sub(r'\W+', '_', algo)
-        plt.savefig(f"figures/{safe_algo_name}_results.png", dpi=300)
-        plt.close()
+    if row["algorithm"] == "cql":
+        # alpha = cql_min_q_weight
+        m = re.search(r"cql_min_q_weight=([\d.]+)", desc)
+        alpha = m.group(1) if m else "?"
+        return f"CQL (alpha={alpha})"
 
-    # Shared plot with all algorithms
-    plt.figure(figsize=(8,5))
-    for i, (_, row) in enumerate(df.iterrows()):
-        plt.plot(x, row[horizon_cols], marker='o', alpha=0.8, 
-                 label=row['description'], color=palette[i % len(palette)], linewidth=2)
-    plt.title("All algorithms", fontsize=14)
-    plt.xlabel("Horizon", fontsize=12)
-    plt.ylabel("Mean final result", fontsize=12)
-    plt.xticks(x, ['']*len(x))
-    plt.legend(fontsize=6)
-    plt.tight_layout()
-    plt.savefig("figures/all_algorithms_results.png", dpi=300)
-    plt.close()
+    elif row["algorithm"] == "independent_targets":
+        # alpha = min_q_..., beta = lcb_..., N = num_critics
+        m_alpha = re.search(r"cql_min_q_weight=([\w\d.]+)", desc)
+        m_beta = re.search(r"actor_lcb_coef=([\w\d.]+)", desc)
+        m_n = re.search(r"num_critics=(\d+)", desc)
+
+        alpha = m_alpha.group(1) if m_alpha else "?"
+        beta = m_beta.group(1) if m_beta else "?"
+        N = m_n.group(1) if m_n else "?"
+
+        return f"MSG (alpha={alpha}, beta={beta}, N={N})"
+
+    elif row["algorithm"] == "shared_targets":
+        # N = ensemble_size
+        m_n = re.search(r"num_critics=(\d+)", desc)
+        N = m_n.group(1) if m_n else "?"
+        return f"SAC-(N={N})"
+
+    else:
+        return row["algorithm"]
 
 
 def make_square_reach_heatmap(df: pd.DataFrame):
+    df["algorithm_formatted"] = df.apply(format_algo, axis=1)
 
-    horizon_cols = sorted([col for col in df.columns if col not in ['description', 'algorithm']])
-    
-    os.makedirs("figures", exist_ok=True)
-    
-    heatmap_data = df.set_index('description')[horizon_cols]
-    
-    plt.figure(figsize=(10, max(6, len(df)*0.5)))
+    df["col_label"] = df["horizon"].astype(str) + "-" + df["level"]
+
+    pivot_mean = df.pivot_table(
+            index="algorithm_formatted",
+            columns="col_label",
+            values="final_returns_mean",
+            aggfunc="mean"
+    )
+
+    pivot_std = df.pivot_table(
+        index="algorithm_formatted",
+        columns="col_label",
+        values="final_returns_std",
+        aggfunc="mean"
+    )
+
+    # Sort columns by numeric horizon and level order
+    level_order = ["low", "medium", "high"]
+    def col_sort_key(col):
+        horizon_str, lvl = col.split("-")
+        return (int(horizon_str), level_order.index(lvl))
+
+    pivot_mean = pivot_mean[sorted(pivot_mean.columns, key=col_sort_key)]
+    pivot_std = pivot_std[sorted(pivot_std.columns, key=col_sort_key)]
+
+    annot_text = pivot_mean.round(2).astype(str) + " ± " + pivot_std.round(2).astype(str)
+    plt.rcParams.update({'font.size': 20, 'font.family': 'Dejavu Sans'})
+
+    plt.figure(figsize=(20, 15))
     sns.heatmap(
-        heatmap_data,
-        annot=True,
-        fmt=".3f",
-        cmap=sns.color_palette("Blues", as_cmap=True), 
-        cbar_kws={'label': 'Mean return'},
+        pivot_mean,                  # base colors by mean
+        annot=annot_text,            # show mean ± std
+        fmt="",
+        cmap="Blues",
+        cbar_kws={'label': 'Final Returns Mean'},
         linewidths=0.5,
         linecolor='white',
+        annot_kws={"size": 16}
     )
-    plt.title("Mean Return per Description and Horizon", fontsize=14)
-    plt.xlabel("Horizon", fontsize=12)
-    plt.ylabel("Description", fontsize=12)
+
+    plt.xlabel("Horizon / Level", fontsize=16, fontweight='bold')
+    plt.ylabel(None)
+    plt.title("Performance Heatmap", fontsize=20, fontweight='bold')
+    plt.xticks(fontsize=14, fontweight='bold', rotation=45)
+    plt.yticks(fontsize=14, fontweight='bold', rotation=45)
     plt.tight_layout()
-    plt.savefig("figures/heatmap_descriptions_horizons.png", dpi=300)
-    plt.close()
+    plt.savefig("figures/square_reach_heatmap.png", dpi=300, bbox_inches='tight') 
+    print("Saved figure to figures/square_reach_heatmap.png")
 
 
 if __name__ == "__main__":
-    res = parse_folder("../results/square_sweep/")
+    res = parse_folder("../results/square_reach/")
     df = process_square_reach_data(res)
     make_square_reach_figures(df)

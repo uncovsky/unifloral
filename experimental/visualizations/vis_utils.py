@@ -32,7 +32,6 @@ def parse_folder(folder: str) -> pd.DataFrame:
 
     records = []
     for file in os.listdir(folder):
-        print(file)
         if file.endswith(".npz"):
             filepath = os.path.join(folder, file)
             try:

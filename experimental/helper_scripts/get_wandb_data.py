@@ -13,8 +13,9 @@ def create_directory(output_dir):
     if not output_dir.endswith('/'):
         output_dir += '/'
 
-    timestamp = pd.Timestamp.now().strftime("%Y%m%d_%H%M%S")
-    output_dir = os.path.join(output_dir, f"wandb_runs_{timestamp}")
+    # do not timestamp lol
+    #timestamp = pd.Timestamp.now().strftime("%Y%m%d_%H%M%S")
+    #output_dir = os.path.join(output_dir, f"wandb_runs_{timestamp}")
 
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
@@ -58,9 +59,13 @@ def save_runs(projects, filters, output_dir):
 
     for project in project_list:
 
-        log_dir_path = os.path.join(output_dir_timestamped, f"logs/{project.name}/")
+        log_dir_path = os.path.join(output_dir_timestamped, f"{project.name}/logs")
         if not os.path.exists(log_dir_path):
             os.makedirs(log_dir_path)
+        csv_path = os.path.join(output_dir_timestamped, f"{project.name}/data")
+        print(csv_path)
+        if not os.path.exists(csv_path):
+            os.makedirs(csv_path)
 
         all_runs_data = []
         runs = api.runs(project.name, filters=filters)
@@ -94,8 +99,6 @@ def save_runs(projects, filters, output_dir):
                 
                 print(f"    Config changed in run {run.id}: {diff} vs {last_diff}")
 
-
-
             # Add a column for run id or run index to identify runs
             history["run_id"] = run.id
             history["run_name"] = run.name
@@ -112,7 +115,7 @@ def save_runs(projects, filters, output_dir):
             print(f"{50* '-'}")
         
         project_name = project.name.split("/")[-1]
-        csv_file_path = os.path.join(output_dir_timestamped, f"{project_name}_runs.csv")
+        csv_file_path = os.path.join(csv_path, f"{project_name}_runs.csv")
 
         if all_runs_data:
             # Concatenate all runs data into one DataFrame
