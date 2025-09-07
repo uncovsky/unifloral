@@ -57,7 +57,7 @@ class SquareReachEnv(gym.Env):
         # whether to randomize initial state on reset
         self.randomize = False
 
-        self.trajectories_limit = 10
+        self.trajectories_limit = 100
 
     def add_goal_to_state(self, state):
         return np.concatenate([state, self.goal], axis=-1)
@@ -151,6 +151,8 @@ class SquareReachEnv(gym.Env):
         plt.title('Trajectories in Square Reach Environment')
         plt.legend()
         plt.grid()
+        plt.tight_layout()
+        plt.show()
 
-        os.makedirs(directory, exist_ok=True)
-        plt.savefig(f"{directory}square_horizon={self.H}_trajs.png")
+        #os.makedirs(directory, exist_ok=True)
+        #plt.savefig(f"{directory}square_horizon={self.H}_trajs.png")

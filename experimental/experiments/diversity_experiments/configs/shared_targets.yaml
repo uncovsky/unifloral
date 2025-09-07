@@ -5,38 +5,34 @@ command:
 entity: ahoj
 method: grid
 name: shared_targets 
-program: algorithms/shared_targets.py
-project: square-shared-targets
+program: algorithms/diversity/shared_targets.py
+project: diverse-shared-targets
 
 parameters:
   # --- Experiment ---
   seed:
-    values: [0, 1, 2, 3, 4]
+    #values: [0, 1, 2, 3, 4]
+    values : [0, 1, 2]
   dataset-source:
     value: d4rl
   dataset-name:
-    values:
-      - halfcheetah-medium-v2 # Easy benchmarks
-      - halfcheetah-medium-expert-v2
-        #- hopper-medium-v2 # Need ~500 ensemble w. shared to solve
-        #- hopper-medium-expert-v2
-
+    value: walker2d-medium-v2
   algorithm:
-    value: independent_targets
+    value: shared_targets
   num_updates:
     value : 500_000
   eval_interval:
-    value: 25_000
+    value: 10_000
   eval_workers:
     value: 8
   eval_final_episodes:
-    value: 1000
+    value: 100
 
   # --- Logging ---
   log:
     value: true
   wandb_project:
-    value: square-sac-n
+    value: diverse-sac_n
   wandb_team:
     value: ahoj
   wandb_group:
@@ -48,25 +44,20 @@ parameters:
   batch_size:
     value: 256
   gamma:
-    value: 0.999
+    value: 0.99
   polyak_step_size:
     value: 0.005
 
   # --- SAC-N ---
   num_critics:
-    value: 10
+    values: [10, 30]
 
   # --- pretraining
   pretrain_updates:
     value: 0
 
-  # --- diversity
-  ensemble_regularizer:
+  # --- RFP
+  prior:
     values:
-      - mean_vector
-      - std
-      - edac
-      - none
-  reg_lagrangian:
-    values: [0.01, 0.1]
-  # --- Test prior later
+      - False
+

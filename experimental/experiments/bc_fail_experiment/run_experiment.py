@@ -4,26 +4,25 @@ import os
 # prevent jax from prealloc mem
 os.environ["XLA_PYTHON_CLIENT_PREALLOCATE"] = "false"
 
-folder = "experiments/diversity_experiments/configs"
-folder_priors = "experiments/diversity_experiments/configs/priors"
-
-def run_experiment(entity, project, prior=False):
-    if prior:
-        sweep_folder(folder_priors, entity, project)
-    else:
-        sweep_folder(folder, entity, project)
+folder = "experiments/bc_fail_experiment/configs"
 
 if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser(description="Run square reach experiment.")
     parser.add_argument("--entity", type=str, required=True, help="WandB entity name")
-    parser.add_argument("--prior", type=bool, default=False, help="Whether to use randomized priors")
     parser.add_argument("--project", type=str, required=True, help="WandB project name")
+    parser.add_argument("--experiment", type=str, choices=["square-reach",
+                                                           "pendulum"],
+                        default="square-reach", help="Which experiment to run")
 
-    # help
     args = parser.parse_args()
-    run_experiment(args.entity, args.project, args.prior)
+
+
+    sweep_folder(folder, args.entity, args.project)
+
+    
+
 
 
 

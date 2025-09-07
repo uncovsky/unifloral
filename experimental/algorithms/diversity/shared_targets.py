@@ -20,9 +20,11 @@ import optax
 import tyro
 import wandb
 
+from infra.diversity_utils import diversity_loss, prepare_ood_dataset, \
+    compute_qvalue_statistics, get_diversity_statistics
 from infra.ensemble_regularization import select_regularizer
-from infra.pretraining import make_pretrain_step
 from infra.offline_dataset_wrapper import OfflineDatasetWrapper
+from infra.pretraining import make_pretrain_step
 
 os.environ["XLA_FLAGS"] = "--xla_gpu_triton_gemm_any=True"
 
@@ -54,7 +56,7 @@ class Args:
     # --- Experiment ---
     seed: int = 0
     dataset_source : str = "d4rl"
-    dataset_name: str = "halfcheetah-medium-v2"
+    dataset_name: str = "walker2d-medium-v2"
     algorithm: str = "sac_n"
     num_updates: int = 3_000_000
     eval_interval: int = 2500
@@ -73,10 +75,6 @@ class Args:
     polyak_step_size: float = 0.005
     # --- SAC-N ---
     num_critics: int = 10
-    # --- MSG ---
-    pi_operator: str = "lcb"
-    cql_min_q_weight: float = 0.5
-    actor_lcb_coef: float = 4.0
     # ---  Pretraining ---
     pretrain_updates : int = 0
     pretrain_loss : str = "bc+sarsa"
@@ -102,6 +100,7 @@ r"""
 
 AgentTrainState = namedtuple("AgentTrainState", "actor vec_q vec_q_target alpha pretrain_lag")
 Transition = namedtuple("Transition", "obs action reward next_obs next_action done")
+
 
 """
     Initializers
@@ -132,6 +131,7 @@ class SoftQNetwork(nn.Module):
             q = nn.Dense(1, kernel_init=sym(3e-3), bias_init=sym(3e-3))(x)
         else:
             q = nn.Dense(1, kernel_init=he_normal, bias_init=sym(3e-3))(x)
+
         return q.squeeze(-1)
 
 class RandomizedPriorQNetwork(nn.Module):
@@ -147,12 +147,13 @@ class RandomizedPriorQNetwork(nn.Module):
         # Combine learnable and prior
         return q_learnable + self.scale * q_prior
 
+
 class VectorQ(nn.Module):
     num_critics: int
     @nn.compact
     def __call__(self, obs, action):
         vmap_critic = nn.vmap(
-            SoftQNetwork, # all learnable
+            SoftQNetwork,
             variable_axes={"params": 0},  # Parameters not shared between critics
             split_rngs={"params": True, "dropout": True},  # Different initializations
             in_axes=None,
@@ -193,9 +194,7 @@ class TanhGaussianActor(nn.Module):
             self.num_actions, kernel_init=sym(1e-3), bias_init=sym(1e-3)
         )(x)
         std = jnp.exp(jnp.clip(log_std, self.log_std_min, self.log_std_max))
-        mean = nn.Dense(
-            self.num_actions, kernel_init=sym(1e-3), bias_init=sym(1e-3)
-        )(x)
+        mean = nn.Dense(self.num_actions, kernel_init=sym(1e-3), bias_init=sym(1e-3))(x)
         pi = distrax.Transformed(
             distrax.Normal(mean, std),
             distrax.Tanh(),
@@ -215,11 +214,11 @@ class EntropyCoef(nn.Module):
         return log_ent_coef
 
 
-def create_train_state(args, rng, network, dummy_input, lr=None):
+def create_train_state(args, rng, network, dummy_input):
     return TrainState.create(
         apply_fn=network.apply,
         params=network.init(rng, *dummy_input),
-        tx=optax.adam(lr if lr is not None else args.lr, eps=1e-5),
+        tx=optax.adam(args.lr, eps=1e-5),
     )
 
 
@@ -230,12 +229,7 @@ def eval_agent(args, rng, env, agent_state):
     cum_reward = onp.zeros(args.eval_workers)
     rng, rng_reset = jax.random.split(rng)
     rng_reset = jax.random.split(rng_reset, args.eval_workers)
-
-    def _rng_to_integer_seed(rng):
-        return int(jax.random.randint(rng, (), 0, jnp.iinfo(jnp.int32).max))
-
-    seeds_reset = [_rng_to_integer_seed(rng) for rng in rng_reset]
-    obs = env.reset(seed=seeds_reset)
+    obs = env.reset()
 
     # --- Rollout agent ---
     @jax.jit
@@ -283,11 +277,6 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset):
     # Select regularizer based on args
     ensemble_regularizer_fn = select_regularizer(args, actor_apply_fn, q_apply_fn)
 
-    if args.pi_operator != "lcb":
-        print("using min in actor update")
-    else:
-        print(f"using lcb with coef {args.actor_lcb_coef} in actor update")
-
     def _train_step(runner_state, _):
         rng, agent_state = runner_state
 
@@ -313,9 +302,7 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset):
             return log_alpha * (entropy - target_entropy)
 
         rng, rng_alpha = jax.random.split(rng)
-        alpha_loss, alpha_grad = _alpha_loss_fn(
-            agent_state.alpha.params, rng_alpha
-        )
+        alpha_loss, alpha_grad = _alpha_loss_fn(agent_state.alpha.params, rng_alpha)
         updated_alpha = agent_state.alpha.apply_gradients(grads=alpha_grad)
         agent_state = agent_state._replace(alpha=updated_alpha)
         alpha = jnp.exp(alpha_apply_fn(agent_state.alpha.params))
@@ -330,27 +317,16 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset):
                 q_values = q_apply_fn(
                     agent_state.vec_q.params, transition.obs, sampled_action
                 )
-
-                # calculate LCB over ensemble
-                std_q = q_values.std(-1)
-
-                if args.pi_operator == "lcb":
-                    q_tgt = q_values.mean(-1) - args.actor_lcb_coef * std_q
-
-                else:
-                    # min, like in PBRL
-                    q_tgt = q_values.min(-1)
-
-                return -q_tgt + alpha * log_pi, -log_pi, q_tgt, std_q
+                q_min = jnp.min(q_values)
+                return -q_min + alpha * log_pi, -log_pi, q_min, q_values.std()
 
             rng = jax.random.split(rng, args.batch_size)
-            loss, entropy, q_lcb, q_std = jax.vmap(_compute_loss)(rng, batch)
-            # compute mean q-value and estimate std over actions
-            return loss.mean(), (entropy.mean(), q_lcb.mean(), q_std.mean())
+            loss, entropy, q_min, q_std = jax.vmap(_compute_loss)(rng, batch)
+            return loss.mean(), (entropy.mean(), q_min.mean(), q_std.mean())
 
         rng, rng_actor = jax.random.split(rng)
-        (actor_loss, (entropy, q_lcb, q_std)), actor_grad = (
-            _actor_loss_function(agent_state.actor.params, rng_actor)
+        (actor_loss, (entropy, q_pred_min, q_pred_std)), actor_grad = _actor_loss_function(
+            agent_state.actor.params, rng_actor
         )
         updated_actor = agent_state.actor.apply_gradients(grads=actor_grad)
         agent_state = agent_state._replace(actor=updated_actor)
@@ -362,40 +338,26 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset):
             args.polyak_step_size,
         )
         updated_q_target = agent_state.vec_q_target.replace(
-            step=agent_state.vec_q_target.step + 1,
-            params=updated_q_target_params,
+            step=agent_state.vec_q_target.step + 1, params=updated_q_target_params
         )
         agent_state = agent_state._replace(vec_q_target=updated_q_target)
 
         # --- Compute targets ---
         def _sample_next_v(rng, transition):
-            next_pi = actor_apply_fn(
-                agent_state.actor.params, transition.next_obs
-            )
+            next_pi = actor_apply_fn(agent_state.actor.params, transition.next_obs)
             # Note: Important to use sample_and_log_prob here for numerical stability
             # See https://github.com/deepmind/distrax/issues/7
             next_action, log_next_pi = next_pi.sample_and_log_prob(seed=rng)
-
-            # Keep independent targets [B, ensemble_size], do not reduce via min(-1)
+            # Minimum of the target Q-values
             next_q = q_apply_fn(
-                agent_state.vec_q_target.params,
-                transition.next_obs,
-                next_action,
+                agent_state.vec_q_target.params, transition.next_obs, next_action
             )
-            return next_q - alpha * log_next_pi.sum(-1)
+            return next_q.min(-1) - alpha * log_next_pi.sum(-1)
 
-        # --- Get targets ----
         rng, rng_next_v = jax.random.split(rng)
         rng_next_v = jax.random.split(rng_next_v, args.batch_size)
         next_v_target = jax.vmap(_sample_next_v)(rng_next_v, batch)
-        target = jnp.expand_dims(batch.reward, -1) + args.gamma * jnp.expand_dims((1 - batch.done), -1) * next_v_target
-
-        # --- Sample actions for CQL ---
-        def _sample_actions(rng, obs):
-            pi = actor_apply_fn(agent_state.actor.params, obs)
-            return pi.sample(seed=rng)
-        rng, rng_pi = jax.random.split(rng, 2)
-        pi_actions = _sample_actions(rng_pi, batch.obs)
+        target = batch.reward + args.gamma * (1 - batch.done) * next_v_target
 
         rng, rng_reg, rng_reg_loss = jax.random.split(rng, 3)
         # --- Get specialized loss function with current state --- 
@@ -404,53 +366,47 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset):
         # --- Update critics ---
         @partial(jax.value_and_grad, has_aux=True)
         def _q_loss_fn(params):
-            # [B, ensemble_size]
             q_pred = q_apply_fn(params, batch.obs, batch.action)
-            critic_loss = jnp.square((q_pred - target))
-            # Take mean over batch and sum over ensembles
-            critic_loss = critic_loss.sum(-1).mean()
-            # Q(s,a) for a ~ pi(s), shape [B, ensemble_size]
-            pi_q = q_apply_fn(params, batch.obs, pi_actions)
-            # [B, 1] for each s in batch, reduce over ensemble dim
-            cql_loss = (pi_q - q_pred).sum(-1).mean()
+            critic_loss = jnp.square((q_pred - jnp.expand_dims(target, -1))).sum(-1).mean()
             regularizer_loss = ensemble_reg_loss(params, rng_reg_loss, batch)
-
-            # CQL regularizer + Diversity regularizer
-            critic_loss += args.cql_min_q_weight * cql_loss
             critic_loss += args.reg_lagrangian * regularizer_loss
+            return critic_loss, (regularizer_loss, q_pred.mean())
 
-            return critic_loss, (cql_loss, regularizer_loss, q_pred.mean(), q_pred.std(),
-                                 pi_q.mean(), pi_q.std())
+        # --- DIVERSITY: calculate EDAC loss --- 
+        diversity_loss_val = diversity_loss(q_apply_fn, agent_state, batch.obs, batch.action, args.num_critics)
+        # --- DIVERSITY: get ensemble stats for logging ---
+        rng_perturb, rng = jax.random.split(rng)
+        diversity_stats = get_diversity_statistics(q_apply_fn, actor_apply_fn,
+                                                   agent_state, rng_perturb,
+                                                   batch.obs, batch.action)
 
-        # unpack aux and get critic grad
-        (critic_loss, (cql_loss, regularizer_loss, q_pred_mean, q_pred_std, pi_q_mean, pi_q_std)), critic_grad = _q_loss_fn(agent_state.vec_q.params)
-
+        (critic_loss, (regularizer_loss, q_pred_mean)), critic_grad = _q_loss_fn(agent_state.vec_q.params)
         updated_q = agent_state.vec_q.apply_gradients(grads=critic_grad)
         agent_state = agent_state._replace(vec_q=updated_q)
+
 
         loss = {
             "critic_loss": critic_loss,
             "actor_loss": actor_loss,
             "alpha_loss": alpha_loss,
-            "cql_loss": cql_loss,
             "regularizer_loss": regularizer_loss,
+            "diversity_loss": diversity_loss_val,
             "entropy": entropy,
             "alpha": alpha,
-            "actor_q_lcb": q_lcb,
-            "q_pred_mean" : q_pred_mean,
-            "q_pred_std": q_pred_std,
-            "pi_q_mean": pi_q_mean,
-            "pi_q_std": pi_q_std
         }
+
+        # --- DIVERSITY: add info to logs
+        for k, v in diversity_stats.items():
+            loss[k] = v
 
         return (rng, agent_state), loss
 
     return _train_step
 
 
-
 def train(args):
     rng = jax.random.PRNGKey(args.seed)
+    
 
     # --- Initialize logger ---
     if args.log:
@@ -464,6 +420,14 @@ def train(args):
 
     dataset_wrapper = OfflineDatasetWrapper(source=args.dataset_source,
                                             dataset=args.dataset_name)
+
+    # --- DIVERSITY: Load expert dataset for walker
+    if args.dataset_name.split("-")[0] != "walker2d":
+        print("This is a mock used to test walker2d, don't use a different dataset")
+    rng_data, rng = jax.random.split(rng)
+    ood_obs, ood_actions = prepare_ood_dataset(
+        rng_data, dataset_name="walker2d-expert-v2", ood_samples=50
+    )
 
     # --- Initialize environment and dataset ---
     rng, rng_env = jax.random.split(rng)
@@ -544,9 +508,12 @@ def train(args):
             # --- Log metrics ---
             step = (eval_idx + 1) * args.eval_interval
             print("Step:", step, f"\t Score: {scores.mean():.2f}")
-            print("Actor loss: ", loss["actor_loss"][-1])
-            print("Critic loss: ", loss["critic_loss"][-1])
 
+            # --- DIVERSITY: get info on OOD data ---
+            ood_stats = compute_qvalue_statistics(q_net.apply,
+                                                  agent_state,
+                                                  ood_obs, 
+                                                  ood_actions)
             if args.log:
                 log_dict = {
                     "return": returns.mean(),
@@ -554,6 +521,9 @@ def train(args):
                     "score_std": scores.std(),
                     "num_updates": step,
                     **{k: loss[k][-1] for k in loss},
+                    "ood_q_std": ood_stats["std"],
+                    "ood_q_mean": ood_stats["mean"],
+                    "ood_q_min": ood_stats["min"],
                 }
                 wandb.log(log_dict)
 
@@ -584,6 +554,12 @@ def train(args):
         # --- Log metrics ---
         step = (eval_idx + 1 + pretrain_evals) * args.eval_interval
         print("Step:", step, f"\t Score: {scores.mean():.2f}")
+
+        # --- DIVERSITY: get info on OOD data ---
+        ood_stats = compute_qvalue_statistics(q_net.apply,
+                                              agent_state,
+                                              ood_obs, 
+                                              ood_actions)
         if args.log:
             log_dict = {
                 "return": returns.mean(),
@@ -591,6 +567,9 @@ def train(args):
                 "score_std": scores.std(),
                 "num_updates": step,
                 **{k: loss[k][-1] for k in loss},
+                "ood_q_std": ood_stats["std"],
+                "ood_q_mean": ood_stats["mean"],
+                "ood_q_min": ood_stats["min"],
             }
             wandb.log(log_dict)
 
@@ -624,6 +603,8 @@ def train(args):
 
     if args.log:
         wandb.finish()
+
+
 
 if __name__ == "__main__":
     # --- Parse arguments ---

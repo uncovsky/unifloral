@@ -5,21 +5,32 @@ command:
 entity: ahoj
 method: grid
 name: independent_targets
-program: algorithms/diversity/independent_targets.py
-project: diverse-independent-targets
+program: algorithms/independent_targets.py
+project: square-independent-targets
 
 parameters:
   # --- Experiment ---
   seed:
-    values: [0, 1, 2]
+    #values: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+    values: [0, 1, 2, 3, 4]
   dataset-source:
-    value: d4rl
+    value: minari
   dataset-name:
-    value: walker2d-medium-v2
+    values: 
+      - square-reach/horizon-10-eps1-v0
+      - square-reach/horizon-10-eps2-v0
+      - square-reach/horizon-10-eps3-v0
+      - square-reach/horizon-50-eps1-v0
+      - square-reach/horizon-50-eps2-v0
+      - square-reach/horizon-50-eps3-v0
+      - square-reach/horizon-200-eps1-v0
+      - square-reach/horizon-200-eps2-v0
+      - square-reach/horizon-200-eps3-v0
   algorithm:
     value: independent_targets
   num_updates:
-    value : 500_000
+    #values: [200_000, 500_000]
+    value : 100_000
   eval_interval:
     value: 10_000
   eval_workers:
@@ -31,7 +42,7 @@ parameters:
   log:
     value: true
   wandb_project:
-    value: diverse-msg
+    value: square-msg
   wandb_team:
     value: ahoj
   wandb_group:
@@ -53,21 +64,6 @@ parameters:
 
   # --- MSG ---
   cql_min_q_weight: 
-    values:
-      - 4.0
+    value: 0.1
   actor_lcb_coef : 
     values : [4.0]
-
-  pi_operator:
-    values:
-      - lcb
-      - min
-
-  # --- pretraining
-  pretrain_updates:
-    value: 0
-
-  # --- RFP
-  prior:
-    values:
-      - False

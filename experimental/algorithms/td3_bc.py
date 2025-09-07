@@ -377,7 +377,8 @@ if __name__ == "__main__":
         # --- Write final returns to file ---
         os.makedirs("final_returns", exist_ok=True)
         time_str = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-        filename = f"{args.algorithm}_{args.dataset}_{time_str}.npz"
+        filtered_name = args.dataset_name.replace("/", "_").replace("-", "_")
+        filename = f"{args.algorithm}_{filtered_name}_{time_str}.npz"
         with open(os.path.join("final_returns", filename), "wb") as f:
             onp.savez_compressed(f, **info, args=asdict(args))
 

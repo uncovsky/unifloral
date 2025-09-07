@@ -15,26 +15,41 @@ def collect_dataset(H, steps=100000, seed=0):
     collecting_env = DataCollector(env)
     step = 0
     env.unwrapped.set_randomize(False)
+    successful_trajs = 0
+    total_trajs = 0
 
     while step < steps:
         done = False
         obs, _ = collecting_env.reset()
 
         coin = np.random.uniform()
-        a = np.array([0.0], dtype=np.float32) if coin < 0.5 else np.array([0.25], dtype=np.float32)
+
+        random = coin < 0.75
+
+
+        a = np.array([0.25], dtype=np.float32)
+        if random:
+            a = np.array([np.random.uniform(1, -1)], dtype=np.float32)
 
         while not done:
             step += 1
+            print(obs, a)
             next_obs, reward, terminated, truncated, _ = collecting_env.step(a)
 
             obs = next_obs
             done = terminated or truncated
 
             if done:
+                if reward:
+                    successful_trajs += 1
+                total_trajs += 1
+
                 obs, _ = collecting_env.reset()
 
 
+    print("Succesful percentage:", successful_trajs / total_trajs)
     
+
     dataset_id = f"bc-fail/horizon-{H}-v0"
     collecting_env.create_dataset(
         dataset_id=dataset_id,
@@ -47,5 +62,5 @@ def collect_dataset(H, steps=100000, seed=0):
     )
 
 if __name__ == "__main__":
-    collect_dataset(H=50, steps=100000, seed=0)
+    collect_dataset(H=30, steps=20000, seed=0)
 

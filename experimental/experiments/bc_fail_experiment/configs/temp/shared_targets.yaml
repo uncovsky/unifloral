@@ -4,22 +4,22 @@ command:
   - ${args_no_boolean_flags}
 entity: ahoj
 method: grid
-name: independent_targets
-program: algorithms/diversity/independent_targets.py
-project: diverse-independent-targets
+name: shared_targets 
+program: algorithms/shared_targets.py
+project: square-shared-targets
 
 parameters:
   # --- Experiment ---
   seed:
-    values: [0, 1, 2]
+    values: [0, 1, 2, 3, 4]
   dataset-source:
-    value: d4rl
+    value: minari
   dataset-name:
-    value: walker2d-medium-v2
+    value : bc-fail/horizon-5-v0
   algorithm:
-    value: independent_targets
+    value: shared_targets
   num_updates:
-    value : 500_000
+    value : 100_000
   eval_interval:
     value: 10_000
   eval_workers:
@@ -31,7 +31,7 @@ parameters:
   log:
     value: true
   wandb_project:
-    value: diverse-msg
+    value: square-sac-n
   wandb_team:
     value: ahoj
   wandb_group:
@@ -39,7 +39,7 @@ parameters:
 
   # --- Generic optimization ---
   lr:
-    value: 3e-4
+    value: 0.0003
   batch_size:
     value: 256
   gamma:
@@ -49,25 +49,4 @@ parameters:
 
   # --- SAC-N ---
   num_critics:
-    values: [10, 30]
-
-  # --- MSG ---
-  cql_min_q_weight: 
-    values:
-      - 4.0
-  actor_lcb_coef : 
-    values : [4.0]
-
-  pi_operator:
-    values:
-      - lcb
-      - min
-
-  # --- pretraining
-  pretrain_updates:
-    value: 0
-
-  # --- RFP
-  prior:
-    values:
-      - False
+    values: [10, 30] # 500 and 1000 have high GPU memory usage

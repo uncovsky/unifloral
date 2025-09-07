@@ -4,20 +4,21 @@ command:
   - ${args_no_boolean_flags}
 entity: ahoj
 method: grid
-name: independent_targets
-program: algorithms/diversity/independent_targets.py
-project: diverse-independent-targets
+name: shared_targets 
+program: algorithms/diversity/shared_targets.py
+project: diverse-shared-targets
 
 parameters:
   # --- Experiment ---
   seed:
-    values: [0, 1, 2]
+    #values: [0, 1, 2, 3, 4]
+    values : [0, 1, 2]
   dataset-source:
     value: d4rl
   dataset-name:
     value: walker2d-medium-v2
   algorithm:
-    value: independent_targets
+    value: shared_targets
   num_updates:
     value : 500_000
   eval_interval:
@@ -31,7 +32,7 @@ parameters:
   log:
     value: true
   wandb_project:
-    value: diverse-msg
+    value: diverse-sac_n
   wandb_team:
     value: ahoj
   wandb_group:
@@ -39,7 +40,7 @@ parameters:
 
   # --- Generic optimization ---
   lr:
-    value: 3e-4
+    value: 0.0003
   batch_size:
     value: 256
   gamma:
@@ -51,18 +52,6 @@ parameters:
   num_critics:
     values: [10, 30]
 
-  # --- MSG ---
-  cql_min_q_weight: 
-    values:
-      - 4.0
-  actor_lcb_coef : 
-    values : [4.0]
-
-  pi_operator:
-    values:
-      - lcb
-      - min
-
   # --- pretraining
   pretrain_updates:
     value: 0
@@ -70,4 +59,9 @@ parameters:
   # --- RFP
   prior:
     values:
-      - False
+      - True
+  randomized_prior_depth:
+    values:
+      - 3
+      - 5
+
