@@ -123,8 +123,8 @@ class SoftQNetwork(nn.Module):
         for _ in range(self.depth):
             x = nn.Dense(256, bias_init=constant(0.1))(x)
             x = nn.relu(x)
-        # For learnable Q-nets, we use a different last layer init
         if self.learnable:
+            # For learnable Q-nets, we use a different last layer init
             q = nn.Dense(1, kernel_init=sym(3e-3), bias_init=sym(3e-3))(x)
         else:
             q = nn.Dense(1, kernel_init=he_normal, bias_init=sym(3e-3))(x)
@@ -149,7 +149,7 @@ class VectorQ(nn.Module):
     @nn.compact
     def __call__(self, obs, action):
         vmap_critic = nn.vmap(
-            SoftQNetwork,
+            SoftQNetwork, # all learnable
             variable_axes={"params": 0},  # Parameters not shared between critics
             split_rngs={"params": True, "dropout": True},  # Different initializations
             in_axes=None,
