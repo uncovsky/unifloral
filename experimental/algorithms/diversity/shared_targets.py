@@ -373,7 +373,7 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset):
             return critic_loss, (regularizer_loss, q_pred.mean())
 
         # --- DIVERSITY: calculate EDAC loss --- 
-        diversity_loss_val = diversity_loss(q_apply_fn, batch.obs, batch.actions, args.num_critics)
+        diversity_loss_val = diversity_loss(q_apply_fn, batch.obs, batch.action, args.num_critics)
         # --- DIVERSITY: get ensemble stats for logging ---
         rng_perturb, rng = jax.random.split(rng)
         diversity_stats = get_diversity_statistics(q_apply_fn, actor_apply_fn,
