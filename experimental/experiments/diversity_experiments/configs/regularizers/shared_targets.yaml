@@ -50,7 +50,7 @@ parameters:
 
   # --- SAC-N ---
   num_critics:
-    value: 30
+    values: [10, 30]
 
   ensemble_regularizer:
     values:
