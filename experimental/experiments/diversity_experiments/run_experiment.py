@@ -5,13 +5,9 @@ import os
 os.environ["XLA_PYTHON_CLIENT_PREALLOCATE"] = "false"
 
 folder = "experiments/diversity_experiments/configs"
-folder_priors = "experiments/diversity_experiments/configs/priors"
 
-def run_experiment(entity, project, prior=False):
-    if prior:
-        sweep_folder(folder_priors, entity, project)
-    else:
-        sweep_folder(folder, entity, project)
+def run_experiment(entity, project, folder, prior=False):
+    sweep_folder(folder, entity, project)
 
 if __name__ == "__main__":
     import argparse
@@ -20,10 +16,12 @@ if __name__ == "__main__":
     parser.add_argument("--entity", type=str, required=True, help="WandB entity name")
     parser.add_argument("--prior", type=bool, default=False, help="Whether to use randomized priors")
     parser.add_argument("--project", type=str, required=True, help="WandB project name")
+    parser.add_argument("--experiment", type=str, required=True, help="Path to configs")
 
-    # help
+
     args = parser.parse_args()
-    run_experiment(args.entity, args.project, args.prior)
+    config_path = os.path.join(folder, args.experiment)
+    run_experiment(args.entity, args.project, config_path, args.prior)
 
 
 
