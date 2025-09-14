@@ -23,6 +23,9 @@ import wandb
 from infra.ensemble_regularization import select_regularizer
 from infra.pretraining import make_pretrain_step
 from infra.offline_dataset_wrapper import OfflineDatasetWrapper
+from infra..scheduling import linear_schedule
+
+
 
 os.environ["XLA_FLAGS"] = "--xla_gpu_triton_gemm_any=True"
 
@@ -101,7 +104,7 @@ r"""
       \___/     Preliminaries
 """
 
-AgentTrainState = namedtuple("AgentTrainState", "actor vec_q vec_q_target alpha pretrain_lag")
+AgentTrainState = namedtuple("AgentTrainState", "actor vec_q vec_q_target alpha pretrain_lag train_step")
 Transition = namedtuple("Transition", "obs action reward next_obs next_action done")
 
 """
@@ -283,13 +286,27 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset):
 
     # Select regularizer based on args
     ensemble_regularizer_fn = select_regularizer(args, actor_apply_fn, q_apply_fn)
+    
 
     if args.regularization_mode not in ["pbrl", "weighted-cql", "filtering"]:
         raise NotImplementedError(f"Regularization mode {args.regularization_mode} not implemented")
     print("Using OOD-regularization mode: ", args.regularization_mode)
 
+    # Schedule for lagrangian parameter of OOD regularization
+    # Smoothly decay beta_ood as in PBRL paper
+
+    if args.ensemble_regularizer != "weighted-cql":
+        schedule_fn = linear_schedule(start=args.beta_ood, end=0.2, max_steps=args.num_updates)
+    else:
+        # don't vary the cql penalty
+        schedule_fn = constant_schedule(args.beta_ood)
+
     def _train_step(runner_state, _):
         rng, agent_state = runner_state
+
+        # --- Get scheduled parameters ---
+        step = agent_state.train_step
+        beta_ood = schedule_fn(step)
 
         # --- Sample batch ---
         rng, rng_batch = jax.random.split(rng)
@@ -370,7 +387,7 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset):
                 agent_state.actor.params, transition.next_obs
             )
             pi = actor_apply_fn(
-                    agent_state.actor.params, transition.obs
+                agent_state.actor.params, transition.obs
             )
 
             # Sample actions from pi(.|s) and pi(.|s')
@@ -380,7 +397,6 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset):
             action, log_pi = pi.sample_and_log_prob(seed=rng_pi)
 
             # Keep independent targets [B, ensemble_size], do not reduce via min(-1)
-
             # Get the Q-values for the next state and actions
             next_q = q_apply_fn(
                 agent_state.vec_q_target.params,
@@ -425,7 +441,7 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset):
         else:
             next_v_target = v_next - alpha * logprobs_next - args.beta_id * std_v_next
             # OOD penalty with ensemble std in current state
-            ood_target = v_curr - args.beta_ood * std_v_curr
+            ood_target = v_curr - beta_ood * std_v_curr
 
             # per state-action pair OOD mask for potential filtering
             ood_mask = (std_ratio >= 0.5 + args.adaptive_epsilon).astype(jnp.float32)
@@ -453,7 +469,7 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset):
                 # [B, ] losses for each ood action 
                 cql_loss = std_ratio * (pi_q - q_pred).sum(-1)
                 # CQL regularizer + Diversity regularizer
-                critic_loss += args.beta_ood * cql_loss.mean()
+                critic_loss += beta_ood * cql_loss.mean()
                 # No ood TD-regularization
                 ood_loss = jnp.array(0.0)
             else:
@@ -471,11 +487,14 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset):
             return critic_loss, (cql_loss, ood_loss, regularizer_loss, q_pred.mean(), q_pred.std(),
                                  pi_q.mean(), pi_q.std())
 
-        # unpack aux and get critic grad
         (critic_loss, (cql_loss, regularizer_loss, q_pred_mean, q_pred_std, pi_q_mean, pi_q_std)), critic_grad = _q_loss_fn(agent_state.vec_q.params)
 
         updated_q = agent_state.vec_q.apply_gradients(grads=critic_grad)
         agent_state = agent_state._replace(vec_q=updated_q)
+
+
+        # --- Increment training step ---
+        agent_state = agent_state._replace(train_step=agent_state.train_step + 1)
 
         loss = {
             "critic_loss": critic_loss,
@@ -554,6 +573,7 @@ def train(args):
         vec_q_target=create_train_state(args, rng_q, q_net, [dummy_obs, dummy_action]),
         alpha=create_train_state(args, rng_alpha, alpha_net, []),
         pretrain_lag=jnp.full((), args.pretrain_lag_init, dtype=jnp.float32),
+        train_step=jnp.full((), 0, dtype=jnp.float32),
     )
 
     # --- Make train step ---
