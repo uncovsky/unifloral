@@ -23,7 +23,7 @@ import wandb
 from infra.ensemble_regularization import select_regularizer
 from infra.pretraining import make_pretrain_step
 from infra.offline_dataset_wrapper import OfflineDatasetWrapper
-from infra..scheduling import linear_schedule
+from infra.scheduling import linear_schedule
 
 
 
@@ -77,7 +77,7 @@ class Args:
     # --- SAC-N ---
     num_critics: int = 10
     # --- PBRL --- 
-    regularization_mode: str = "pbrl" # pbrl, weighted-cql, filtering
+    regularization_mode: str = "pbrl" # pbrl, weighted_cql, filtering
     beta_id : float = 0.1
     beta_ood: float = 10.0
     adaptive_epsilon: float = 0.1
@@ -288,14 +288,14 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset):
     ensemble_regularizer_fn = select_regularizer(args, actor_apply_fn, q_apply_fn)
     
 
-    if args.regularization_mode not in ["pbrl", "weighted-cql", "filtering"]:
+    if args.regularization_mode not in ["pbrl", "weighted_cql", "filtering"]:
         raise NotImplementedError(f"Regularization mode {args.regularization_mode} not implemented")
     print("Using OOD-regularization mode: ", args.regularization_mode)
 
     # Schedule for lagrangian parameter of OOD regularization
     # Smoothly decay beta_ood as in PBRL paper
 
-    if args.ensemble_regularizer != "weighted-cql":
+    if args.ensemble_regularizer != "weighted_cql":
         schedule_fn = linear_schedule(start=args.beta_ood, end=0.2, max_steps=args.num_updates)
     else:
         # don't vary the cql penalty
@@ -421,19 +421,20 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset):
         # --- Get values ----
         rng, rng_values = jax.random.split(rng)
         rng_values = jax.random.split(rng_values, args.batch_size)
-        v_batch, v_curr, v_next, ood_actions, logprobs_curr, logprobs_next = jax.vmap(_sample_next_v)(rng_values, batch)
+        v_batch, v_curr, v_next, ood_actions, logprobs_curr, logprobs_next = jax.vmap(_get_transition_values)(rng_values, batch)
 
         # compute ensemble std for each Q(s, a) 
         # shape [B, ]
         std_v_next = v_next.std(-1)
         std_v_curr = v_curr.std(-1)
         std_v_batch = v_batch.std(-1)
+        logprobs_next = logprobs_next.reshape(-1, 1)
 
         # Compute ratio of stds of sampled (OOD actions) to the batch
         std_ratio = (std_v_curr / (std_v_batch + std_v_curr + 1e-6)).clip(0.0, 1.0)
 
         # --- Calculate Targets for TD backups ---
-        if args.regularization_mode == "weighted-cql":
+        if args.regularization_mode == "weighted_cql":
             # MSG + weighted CQL regularization
             # Do not penalize ID during bellman backup
             next_v_target = v_next - alpha * logprobs_next
@@ -480,14 +481,16 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset):
                     ood_loss = (ood_mask * ood_loss)
                 critic_loss += ood_loss.mean()
                 cql_loss = jnp.array(0.0)
-                    
+
+            # Diversity regularizer
+            regularizer_loss = ensemble_reg_loss(params, rng_reg_loss, batch)
             # Add diversity regularizer
             critic_loss += args.reg_lagrangian * regularizer_loss
 
             return critic_loss, (cql_loss, ood_loss, regularizer_loss, q_pred.mean(), q_pred.std(),
                                  pi_q.mean(), pi_q.std())
 
-        (critic_loss, (cql_loss, regularizer_loss, q_pred_mean, q_pred_std, pi_q_mean, pi_q_std)), critic_grad = _q_loss_fn(agent_state.vec_q.params)
+        (critic_loss, (cql_loss, ood_loss, regularizer_loss, q_pred_mean, q_pred_std, pi_q_mean, pi_q_std)), critic_grad = _q_loss_fn(agent_state.vec_q.params)
 
         updated_q = agent_state.vec_q.apply_gradients(grads=critic_grad)
         agent_state = agent_state._replace(vec_q=updated_q)
@@ -502,6 +505,7 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset):
             "alpha_loss": alpha_loss,
             "cql_loss": cql_loss,
             "regularizer_loss": regularizer_loss,
+            "ood_loss": ood_loss,
             "entropy": entropy,
             "alpha": alpha,
             "actor_q_lcb": q_lcb,
