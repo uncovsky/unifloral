@@ -55,7 +55,7 @@ class Args:
     seed: int = 0
     dataset_source : str = "d4rl"
     dataset_name: str = "halfcheetah-medium-v2"
-    algorithm: str = "sac_n"
+    algorithm: str = "msg"
     num_updates: int = 3_000_000
     eval_interval: int = 2500
     eval_workers: int = 8
