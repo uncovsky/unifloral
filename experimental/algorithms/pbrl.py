@@ -79,7 +79,7 @@ class Args:
     # --- PBRL --- 
     regularization_mode: str = "pbrl" # pbrl, weighted_cql, filtering
     beta_id : float = 0.1
-    beta_ood: float = 10.0
+    beta_ood: float = 5.0
     adaptive_epsilon: float = 0.1
     # ---  Pretraining ---
     pretrain_updates : int = 0
@@ -440,9 +440,9 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset):
             next_v_target = v_next - alpha * logprobs_next
             # OOD penalization is done via a weighted CQL loss by the std_ratio
         else:
-            next_v_target = v_next - alpha * logprobs_next - args.beta_id * std_v_next
+            next_v_target = v_next - alpha * logprobs_next - args.beta_id * std_v_next.reshape(-1, 1)
             # OOD penalty with ensemble std in current state
-            ood_target = v_curr - beta_ood * std_v_curr
+            ood_target = v_curr - beta_ood * std_v_curr.reshape(-1, 1)
 
             # per state-action pair OOD mask for potential filtering
             ood_mask = (std_ratio >= 0.5 + args.adaptive_epsilon).astype(jnp.float32)
