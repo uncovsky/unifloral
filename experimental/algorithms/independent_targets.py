@@ -74,6 +74,7 @@ class Args:
     # --- SAC-N ---
     num_critics: int = 10
     # --- MSG ---
+    actor_lr : float = 1e-4
     pi_operator: str = "lcb"
     cql_min_q_weight: float = 0.5
     actor_lcb_coef: float = 4.0
@@ -411,8 +412,9 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset):
             critic_loss = critic_loss.sum(-1).mean()
             # Q(s,a) for a ~ pi(s), shape [B, ensemble_size]
             pi_q = q_apply_fn(params, batch.obs, pi_actions)
-            # [B, 1] for each s in batch, reduce over ensemble dim
-            cql_loss = (pi_q - q_pred).sum(-1).mean()
+
+            # Not mentioned in the paper, but min is used to aggr here
+            cql_loss = (pi_q.min(-1) - q_pred.min(-1)).mean()
             regularizer_loss = ensemble_reg_loss(params, rng_reg_loss, batch)
 
             # CQL regularizer + Diversity regularizer
@@ -500,7 +502,7 @@ def train(args):
     # Target networks share seeds to match initialization
     rng, rng_actor, rng_q, rng_alpha, rng_lag = jax.random.split(rng, 5)
     agent_state = AgentTrainState(
-        actor=create_train_state(args, rng_actor, actor_net, [dummy_obs]),
+        actor=create_train_state(args, rng_actor, actor_net, [dummy_obs], args.actor_lr),
         vec_q=create_train_state(args, rng_q, q_net, [dummy_obs, dummy_action]),
         vec_q_target=create_train_state(args, rng_q, q_net, [dummy_obs, dummy_action]),
         alpha=create_train_state(args, rng_alpha, alpha_net, []),
