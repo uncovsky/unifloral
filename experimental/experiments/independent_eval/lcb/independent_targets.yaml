@@ -32,7 +32,7 @@ parameters:
   num_updates:
     value : 1_000_000
   eval_interval:
-    value: 50_000
+    value: 10_000
   eval_workers:
     value: 8
   eval_final_episodes:
@@ -71,7 +71,7 @@ parameters:
     value: 4.0
 
   pi_operator:
-    value: min
+    value: lcb
 
   # --- pretraining
   pretrain_updates:
