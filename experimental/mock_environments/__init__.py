@@ -1,4 +1,5 @@
 from gymnasium.envs.registration import register
+from mock_environments.square_reach import SquareReachEnv
 
 # ==========================
 # Register the environments 
@@ -10,3 +11,6 @@ register(
     max_episode_steps=1000,  # default, can be overridden
 )
 
+
+
+__all__ = ["SquareReachEnv"]
