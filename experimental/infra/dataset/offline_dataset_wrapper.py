@@ -5,7 +5,7 @@ import gymnasium as gymn
 import gym
 import numpy as onp
 import minari
-
+import tqdm
 import warnings
 
 
@@ -94,7 +94,7 @@ class OfflineDatasetWrapper:
         min_length, max_length = float("inf"), float("-inf")
         min_reward, max_reward = float("inf"), float("-inf")
 
-        for episode in minari_dataset.iterate_episodes():
+        for episode in tqdm.tqdm(minari_dataset.iterate_episodes(), desc="Loading minari dataset"):
             observations.extend(episode.observations)
             actions.extend(episode.actions)
             rewards.extend(episode.rewards)
@@ -251,9 +251,10 @@ class OfflineDatasetWrapper:
 def rng_to_integer_seed(rng):
     return int(jax.random.randint(rng, (), 0, jnp.iinfo(jnp.int32).max))
 
-def eval_agent_gym(args, rng, env, agent_state):
-    """ Evaluation function that is consistent with gym (D4RL) old API
 
+def eval_agent_gym(args, rng, env, agent_state):
+    """ 
+        Evaluation function that is consistent with gym (D4RL) old API
         Assuming env is gym.vector.AsyncVectorEnv or gym.vector.SyncVectorEnv
         created with args.eval_workers workers.
     """
@@ -300,7 +301,8 @@ def eval_agent_gym(args, rng, env, agent_state):
 
 
 def eval_agent_gymnasium(args, rng, env, agent_state):
-    """ Evaluation function that is consistent with new gymnasium (Minari) API.
+    """ 
+        Evaluation function that is consistent with new gymnasium (Minari) API.
         Assuming env is gymnasium.vector.AsyncVectorEnv or gymnasium.vector.SyncVectorEnv
         created with args.eval_workers workers.
     """

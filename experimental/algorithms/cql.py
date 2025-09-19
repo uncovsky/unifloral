@@ -23,8 +23,8 @@ import optax
 import tyro
 import wandb
 
-from infra.pretraining import make_pretrain_step
-from infra.offline_dataset_wrapper import OfflineDatasetWrapper
+from infra import make_pretrain_step, select_regularizer
+from infra.dataset import OfflineDatasetWrapper
 
 os.environ["XLA_FLAGS"] = "--xla_gpu_triton_gemm_any=True"
 

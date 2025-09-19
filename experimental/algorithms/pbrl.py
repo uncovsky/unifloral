@@ -20,10 +20,9 @@ import optax
 import tyro
 import wandb
 
-from infra.ensemble_regularization import select_regularizer
-from infra.pretraining import make_pretrain_step
-from infra.offline_dataset_wrapper import OfflineDatasetWrapper
-from infra.scheduling import linear_schedule
+from infra import make_pretrain_step, select_regularizer
+from infra.dataset import OfflineDatasetWrapper
+from infra.utils import linear_schedule, constant_schedule
 
 
 
@@ -59,7 +58,7 @@ class Args:
     dataset_source : str = "d4rl"
     dataset_name: str = "halfcheetah-medium-v2"
     algorithm: str = "pbrl"
-    num_updates: int = 3_000_000
+    num_updates: int = 1_000_000
     eval_interval: int = 2500
     eval_workers: int = 8
     eval_final_episodes: int = 1000
@@ -93,16 +92,6 @@ class Args:
     randomized_prior_depth : int = 3
     randomized_prior_scale : float = 1.0
 
-
-r"""
-     |\  __
-     \| /_/
-      \|
-    ___|_____
-    \       /
-     \     /
-      \___/     Preliminaries
-"""
 
 AgentTrainState = namedtuple("AgentTrainState", "actor vec_q vec_q_target alpha pretrain_lag train_step")
 Transition = namedtuple("Transition", "obs action reward next_obs next_action done")
@@ -267,39 +256,35 @@ def eval_agent(args, rng, env, agent_state):
     return cum_reward
 
 
-r"""
-          __/)
-       .-(__(=:
-    |\ |    \)
-    \ ||
-     \||
-      \|
-    ___|_____
-    \       /
-     \     /
-      \___/     Agent
-"""
-
-
 def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset):
     """Make JIT-compatible agent train step."""
 
-    # Select regularizer based on args
-    ensemble_regularizer_fn = select_regularizer(args, actor_apply_fn, q_apply_fn)
-    
+    """
+        Ensemble regularizer (diversity)
 
+            If set to "none", ensemble regularizer fn will be a no-op.
+    """
+    ensemble_regularizer_fn = select_regularizer(args, actor_apply_fn, q_apply_fn)
+
+
+    """
+        OOD-regularization
+    """
     if args.regularization_mode not in ["pbrl", "weighted_cql", "filtering"]:
         raise NotImplementedError(f"Regularization mode {args.regularization_mode} not implemented")
     print("Using OOD-regularization mode: ", args.regularization_mode)
 
-    # Schedule for lagrangian parameter of OOD regularization
-    # Smoothly decay beta_ood as in PBRL paper
-
+    """
+        Select schedule for lagrangian parameter of OOD regularization
+            For "pbrl" smoothly decay beta_ood as in PBRL paper from initial value to 0.2
+    """
     if args.ensemble_regularizer != "weighted_cql":
         schedule_fn = linear_schedule(start=args.beta_ood, end=0.2, max_steps=args.num_updates)
     else:
         # don't vary the cql penalty
         schedule_fn = constant_schedule(args.beta_ood)
+
+
 
     def _train_step(runner_state, _):
         rng, agent_state = runner_state

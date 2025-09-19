@@ -1,11 +1,11 @@
 import jax
 import jax.numpy as jnp
-from infra.offline_dataset_wrapper import OfflineDatasetWrapper
+
+from infra.dataset import OfflineDatasetWrapper
 
 """
     A collection of utility functions used to measure
-    ensemble diversity in experiments.
-"""
+    ensemble diversity in experiments. """
 
 def diversity_loss(q_apply_fn, agent_state, obs, actions, num_critics):
     """
