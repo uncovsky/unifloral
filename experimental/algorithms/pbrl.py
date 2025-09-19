@@ -422,8 +422,8 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset):
         old_target_next = ood_q_next - 0.1 * std_q_ood_next
 
         # Clip targets to be non-negative (!This is incorrect for negative rewards!)
-        ood_target_curr = jnp.clip(ood_target_curr, min=0.0)
-        old_target_next = jnp.clip(old_target_next, min=0.0)
+        ood_target_curr = jnp.clip(ood_target_curr, a_min=0.0)
+        old_target_next = jnp.clip(old_target_next, a_min=0.0)
 
         """
             TD target
