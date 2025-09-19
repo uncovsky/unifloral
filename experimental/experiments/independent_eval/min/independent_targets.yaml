@@ -19,9 +19,9 @@ parameters:
       - hopper-medium-v2
       - hopper-expert-v2
       - hopper-medium-expert-v2
-      - walker-medium-v2
-      - walker-expert-v2
-      - walker-medium-expert-v2
+      - walker2d-medium-v2
+      - walker2d-expert-v2
+      - walker2d-medium-expert-v2
       - antmaze-medium-diverse-v2
       - antmaze-large-diverse-v2
       - antmaze-medium-play-v2
