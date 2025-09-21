@@ -47,7 +47,8 @@ def create_checkpoint_dir():
     return ckpt_dir
 
 def save_train_state(train_state, ckpt_dir, step):
-    checkpoints.save_checkpoint(ckpt_dir, target=train_state, step=step)
+    checkpoints.save_checkpoint(ckpt_dir, target=train_state, step=step,
+                                overwrite=False, keep=2)
     print(f"Checkpoint saved at step {step} in {ckpt_dir}")
 
 
