@@ -413,9 +413,7 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset):
             critic_loss = critic_loss.sum(-1).mean()
             # Q(s,a) for a ~ pi(s), shape [B, ensemble_size]
             pi_q = q_apply_fn(params, batch.obs, pi_actions)
-
-            # Not mentioned in the paper, but min is used to aggr here
-            cql_loss = (pi_q.min(-1) - q_pred.min(-1)).mean()
+            cql_loss = pi_q.mean() - q_pred.mean()
             regularizer_loss = ensemble_reg_loss(params, rng_reg_loss, batch)
 
             # CQL regularizer + Diversity regularizer
