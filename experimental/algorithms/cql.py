@@ -57,7 +57,7 @@ class Args:
     seed: int = 0
     dataset_source : str = "d4rl"
     dataset_name: str = "halfcheetah-medium-v2"
-    algorithm: str = "sac_n"
+    algorithm: str = "cql"
     num_updates: int = 3_000_000
     eval_interval: int = 2500
     eval_workers: int = 8
@@ -370,21 +370,23 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset):
         # --- Update critics ---
         @jax.value_and_grad
         def _q_loss_fn(params):
-            q_pred = q_apply_fn(params, batch.obs, batch.action)
+            q_pred = q_apply_fn(params, batch.obs, batch.action) # [B, N]
             critic_loss = jnp.square((q_pred - jnp.expand_dims(target, -1)))
             critic_loss = critic_loss.sum(-1).mean()
 
-            rand_q = q_apply_fn(params, batch.obs, cql_random_actions)
-            pi_q = q_apply_fn(params, batch.obs, pi_actions)
-            # changed obs to current obs, not next_obs
+            rand_q = q_apply_fn(params, batch.obs, cql_random_actions) #[B, N]
+            pi_q = q_apply_fn(params, batch.obs, pi_actions) #[B, N]
             next_pi_q = q_apply_fn(params, batch.obs, pi_next_actions)
             all_qs = jnp.concatenate([rand_q, pi_q, next_pi_q, q_pred], axis=1)
-            q_ood = jax.scipy.special.logsumexp(all_qs / args.cql_temperature, axis=1)
-            q_ood = jax.lax.stop_gradient(q_ood * args.cql_temperature)
-            q_diff = (jnp.expand_dims(q_ood, 1) - q_pred).mean()
-            min_q_loss = q_diff * args.cql_min_q_weight
 
-            critic_loss += min_q_loss.mean()
+            # Logsumexp over batch dimension [B, N] -> [N], 
+            # sum over ensemble members [N] -> []
+            q_ood = jax.scipy.special.logsumexp(all_qs / args.cql_temperature, axis=0).sum()
+            q_ood = q_ood * args.cql_temperature * args.cql_min_q_weight
+
+            # loss for each member is alpha*(q_ood - q_pred.mean())
+            min_q_loss = q_ood - q_pred.mean() * args.cql_min_q_weight 
+            critic_loss += min_q_loss
             return critic_loss
 
         critic_loss, critic_grad = _q_loss_fn(agent_state.vec_q.params)
