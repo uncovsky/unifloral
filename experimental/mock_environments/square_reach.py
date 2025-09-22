@@ -1,9 +1,7 @@
 import gymnasium as gym
 from gymnasium import spaces
-from gymnasium.envs.registration import register
 import matplotlib.pyplot as plt
 import numpy as np
-import os
 
 
 class SquareReachEnv(gym.Env):
