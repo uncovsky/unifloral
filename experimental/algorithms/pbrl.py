@@ -404,8 +404,8 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset):
         """
             Clip targets to be non-negative for stability (!This is incorrect for negative rewards!)
         """
-        #ood_target_curr = jnp.clip(ood_target_curr, a_min=0.0)
-        #old_target_next = jnp.clip(old_target_next, a_min=0.0)
+        ood_target_curr = jnp.clip(ood_target_curr, a_min=0.0)
+        old_target_next = jnp.clip(old_target_next, a_min=0.0)
 
         """
             TD target
