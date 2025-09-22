@@ -283,26 +283,35 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset):
     """
     assert args.beta_ood_start >= 1.0 
     assert args.beta_ood_min < 1.0
-    assert args.beta_linear_decay_steps < args.num_updates
+    assert args.constant_beta_ood or args.beta_linear_decay_steps < args.num_updates
 
     if args.constant_beta_ood:
         # PBRL uses this for expert datasets :-)
         schedule_fn = constant_schedule(args.beta_ood_start)
 
     else:
-        # First decay linearly to 1.0
+        """
+            Scheduling for beta_ood
+         
+                First decay linearly to 1.0
+        """
         linear_schedule_fn = linear_schedule(start=args.beta_ood_start, end=1.0, max_steps=args.beta_linear_decay_steps)
 
-        # Then every epoch decay exponentially (/1.01) up to min value
-        # PBRL actually maintains a running mean of OOD q values and only
-        # reduces this when the mean decreases in the last epochs, but whatever
+        """
+            Then every epoch decay exponentially (/1.01) up to min value
+                PBRL actually maintains a running mean of OOD q values and only
+                reduces this when the mean decreases in the last epochs, but we
+                simplify this to fixed exponential decay.
+        """
         exponential_schedule_fn = exponential_schedule(start=1.0,
                                                        min_value=args.beta_ood_min,
                                                        decay_rate=args.beta_ood_exp_decay,
                                                        decay_steps=1000,
                                                        offset=args.beta_linear_decay_steps)
 
-        # Combine the schedules
+        """
+            Create combined schedule
+        """
         schedules = [linear_schedule_fn, exponential_schedule_fn]
         steps = [0, args.beta_linear_decay_steps]
         schedule_fn = combined_schedule(schedules, steps)
@@ -343,76 +352,42 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset):
         agent_state = agent_state._replace(alpha=updated_alpha)
         alpha = jnp.exp(alpha_apply_fn(agent_state.alpha.params))
 
-        # --- Compute targets, for both OOD and ID actions ---
-        def _get_transition_values(rng, transition):
-            rng_next, rng_next_ood, rng_ood = jax.random.split(rng, 3)
+        # --- Compute OOD actions, etc. for whole batch ---
+        rng_next, rng_ood_next, rng_ood = jax.random.split(rng, 3)
 
-            # Get policies for successor state and current state
-            next_pi = actor_apply_fn(
-                agent_state.actor.params, transition.next_obs
-            )
-            pi = actor_apply_fn(
-                agent_state.actor.params, transition.obs
-            )
+        # --- Get policies for states ---
+        next_pis = actor_apply_fn(agent_state.actor.params, batch.next_obs)
+        pis = actor_apply_fn(agent_state.actor.params, batch.obs)
 
-            # Sample actions from pi(.|s) and pi(.|s')
-            # Note: Important to use sample_and_log_prob here for numerical stability
-            # See https://github.com/deepmind/distrax/issues/7
-            next_action, log_next_pi = next_pi.sample_and_log_prob(seed=rng_next)
+        # --- Sample actions ---
+        bootstrap_actions, logprobs_next = next_pis.sample_and_log_prob(seed=rng_next)
+        logprobs_next = logprobs_next.sum(-1, keepdims=True)
+        ood_actions, _ = pis.sample_and_log_prob(seed=rng_ood,
+                                                 sample_shape=(args.ood_actions_sampled))
+        ood_actions_next, _ = next_pis.sample_and_log_prob(seed=rng_ood_next,
+                                                           sample_shape=(args.ood_actions_sampled))
 
-            # shape [ood_actions_sampled, action_dim]
-            # Sample OOD actions for successor and next state
-            ood_actions, _ = pi.sample_and_log_prob(seed=rng_ood, sample_shape=(args.ood_actions_sampled,))
-            ood_actions_next, _ = next_pi.sample_and_log_prob(seed=rng_next_ood, sample_shape=(args.ood_actions_sampled,))
+        # Reshape to [B, sampled_actions, action_dim] 
+        ood_actions = jnp.swapaxes(ood_actions, 0, 1)
+        ood_actions_next = jnp.swapaxes(ood_actions_next, 0, 1)
 
-            # Get expanded states for OOD actions
-            expanded_curr = jnp.repeat(jnp.expand_dims(transition.obs, 0), args.ood_actions_sampled, axis=0)
-            expanded_next = jnp.repeat(jnp.expand_dims(transition.next_obs, 0), args.ood_actions_sampled, axis=0)
-
-            # Get q-values for sampled actions
-            next_q = q_apply_fn(
-                agent_state.vec_q_target.params,
-                transition.next_obs,
-                next_action,
-            )
-            ood_q = q_apply_fn(
-                agent_state.vec_q.params,
-                expanded_curr,
-                ood_actions,
-            )
-            ood_q_next = q_apply_fn(
-                agent_state.vec_q.params,
-                expanded_next,
-                ood_actions_next,
-            )
-                
-            """
-                Return Q-values for TD backup & OOD regularization, as well as
-                expanded states and sampled OOD actions.
-            """
-
-            return next_q, ood_q, ood_q_next, log_next_pi.sum(-1),\
-                   expanded_curr, ood_actions,\
-                   expanded_next, ood_actions_next
-
+        # Expand state tensor to [B, sampled_actions, state_dim]
+        states = jnp.repeat(jnp.expand_dims(batch.obs, 1), args.ood_actions_sampled, axis=1)
+        next_states = jnp.repeat(jnp.expand_dims(batch.next_obs, 1), args.ood_actions_sampled, axis=1)
 
         # --- Get values ----
-        rng, rng_values = jax.random.split(rng)
-        rng_values = jax.random.split(rng_values, args.batch_size)
-        next_q, ood_q, ood_q_next, logprobs_next, states_curr, ood_actions, states_next, ood_actions_next = jax.vmap(_get_transition_values)(rng_values, batch)
-
-        # Get ensemble stds for all q-values (last dim)
+        # --- Bootstrap actions with target nets ---
+        next_q = q_apply_fn(agent_state.vec_q_target.params, batch.next_obs, bootstrap_actions)
+        # --- OOD actions with current Q nets --- 
+        ood_q = q_apply_fn(agent_state.vec_q.params, states, ood_actions)
+        ood_q_next = q_apply_fn(agent_state.vec_q.params, next_states, ood_actions_next)
 
         # [B, 1]
         std_q_next = next_q.std(-1, keepdims=True)
-
         # [B, sampled_actions, 1]
         std_q_ood = ood_q.std(-1, keepdims=True)
         std_q_ood_next = ood_q_next.std(-1, keepdims=True)
 
-
-        # Bellman bootstrap, use entropy augmented value + std correction
-        logprobs_next = jnp.expand_dims(logprobs_next, -1)
         next_v_target = next_q - alpha * logprobs_next - args.beta_id * std_q_next
 
         """
@@ -420,12 +395,17 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset):
         """
         ood_target_curr = ood_q - beta_ood * std_q_ood
         
-        # PBRL keeps ood penalty here at 0.1 for some reason
+        """
+            PBRL keeps ood penalty for next state actions
+            as fixed 0.1 for some reason.
+        """
         old_target_next = ood_q_next - 0.1 * std_q_ood_next
 
-        # Clip targets to be non-negative (!This is incorrect for negative rewards!)
-        ood_target_curr = jnp.clip(ood_target_curr, a_min=0.0)
-        old_target_next = jnp.clip(old_target_next, a_min=0.0)
+        """
+            Clip targets to be non-negative for stability (!This is incorrect for negative rewards!)
+        """
+        #ood_target_curr = jnp.clip(ood_target_curr, a_min=0.0)
+        #old_target_next = jnp.clip(old_target_next, a_min=0.0)
 
         """
             TD target
@@ -452,8 +432,8 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset):
                 OOD regularization
             """
             # Q(s,a) for a ~ pi(s), shape [B * ood_actions_sampled, ensemble_size]
-            q_pred_ood = q_apply_fn(params, states_curr , ood_actions)
-            q_pred_ood_next = q_apply_fn(params, states_next, ood_actions_next)
+            q_pred_ood = q_apply_fn(params, states , ood_actions)
+            q_pred_ood_next = q_apply_fn(params, next_states, ood_actions_next)
 
             # on current states
             ood_loss = jnp.square(q_pred_ood - ood_target_curr).sum(-1).mean()
