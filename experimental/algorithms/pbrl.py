@@ -78,6 +78,7 @@ class Args:
     # --- SAC-N ---
     num_critics: int = 10
     # --- PBRL --- 
+    critic_norm: str = "spectral" # \in {"spectral", "layer", "none"}
     actor_lr: float = 1e-4
     beta_id : float = 0.01
     beta_ood_start: float = 5.0
@@ -99,12 +100,12 @@ class Args:
     randomized_prior_scale : float = 1.0
 
 
+class AugmentedTrainState(TrainState):
+    batch_stats: any = None
+
 AgentTrainState = namedtuple("AgentTrainState", "actor vec_q vec_q_target alpha pretrain_lag train_step")
 Transition = namedtuple("Transition", "obs action reward next_obs next_action done")
 
-
-class AugmentedTrainState(TrainState):
-    batch_stats: any = None
 
 """
     Initializers
@@ -112,8 +113,9 @@ class AugmentedTrainState(TrainState):
 def sym(scale):
     def _init(*args, **kwargs):
         return uniform(2 * scale)(*args, **kwargs) - scale
-
     return _init
+
+
 he_normal = nn.initializers.variance_scaling(
     scale=2.0,
     mode="fan_in",
@@ -121,72 +123,93 @@ he_normal = nn.initializers.variance_scaling(
 )
 
 """
-    Networks
+    Models
 """
 
 class SoftQNetwork(nn.Module):
     depth: int = 3
+    critic_norm: str = "none"
     learnable: bool = True
     @nn.compact
     def __call__(self, obs, action, train=True):
         x = jnp.concatenate([obs, action], axis=-1)
-        for _ in range(self.depth):
-            x = nn.SpectralNorm(nn.Dense(256, bias_init=constant(0.1)))(x, update_stats=train)
-            x = nn.relu(x)
-        if self.learnable:
-            # For learnable Q-nets, we use a different last layer init
-            q = nn.SpectralNorm(nn.Dense(1, kernel_init=sym(3e-3),
-                                         bias_init=sym(3e-3)))(x, update_stats=train)
 
+        for _ in range(self.depth):
+            layer = nn.Dense(256, bias_init=constant(0.1))
+
+            if self.learnable:
+                # Normalization for learnable Q-nets
+                if self.critic_norm == "spectral":
+                    x = nn.SpectralNorm(layer)(x, update_stats=train)
+                elif self.critic_norm == "layer":
+                    x = layer(x)
+                    x = nn.LayerNorm()(x)
+                else:
+                    # no normalization
+                    x = layer(x)
+            else:
+                # Non-learnable nets (prior) have no normalization
+                x = layer(x)
+
+            x = nn.relu(x)
+
+        # For learnable Q-nets, we use a different last layer init
+        if self.learnable:
+            last_layer = nn.Dense(1, kernel_init=sym(3e-3), bias_init=sym(3e-3))
         else:
-            q = nn.SpectralNorm(nn.Dense(1, kernel_init=he_normal,
-                                         bias_init=sym(3e-3)))(x, update_stats=train)
+            last_layer = nn.Dense(1, kernel_init=he_normal, bias_init=sym(3e-3))
+        q = last_layer(x)
+
         return q.squeeze(-1)
+
 
 class RandomizedPriorQNetwork(nn.Module):
     depth: int 
     scale: float  
     @nn.compact
-    def __call__(self, obs, action):
-        q_learnable = SoftQNetwork(learnable=True, name="learnable_q_network")(obs, action)
-        prior_net = SoftQNetwork(learnable=False, depth=self.depth, name="prior_q_network")
+    def __call__(self, obs, action, train=True):
+        q_learnable = SoftQNetwork(learnable=True, critic_norm=args.critic_norm,
+                                   name="learnable_q_network")(obs, action, train)
+        prior_net = SoftQNetwork(learnable=False, critic_norm="none",
+                                 depth=self.depth, name="prior_q_network")
         q_prior = prior_net(obs, action)
         # make sure to not prop grad thru prior net
         q_prior = jax.lax.stop_gradient(q_prior)
         # Combine learnable and prior
         return q_learnable + self.scale * q_prior
 
+
 class VectorQ(nn.Module):
     num_critics: int
     @nn.compact
     def __call__(self, obs, action, train=True):
         vmap_critic = nn.vmap(
-                SoftQNetwork, # all learnable
+                partial(SoftQNetwork, critic_norm=args.critic_norm, learnable=True), # all learnable
                 variable_axes={"params": 0, "batch_stats" : 0},  # Parameters not shared between critics
                 split_rngs={"params": True, "dropout": True},  # Different initializations
                 in_axes=None,
                 out_axes=-1,
                 axis_size=self.num_critics,
-
-                )
+        )
         q_values = vmap_critic()(obs, action, train)
         return q_values
+
 
 class PriorVectorQ(nn.Module):
     num_critics: int
     depth: int
     scale: float
     @nn.compact
-    def __call__(self, obs, action):
+    def __call__(self, obs, action, train=True):
         vmap_critic = nn.vmap(
                 RandomizedPriorQNetwork,
-                variable_axes={"params": 0},  # Parameters not shared between critics
+                variable_axes={"params": 0, "batch_stats" : 0},  # Parameters not shared between critics
                 split_rngs={"params": True, "dropout": True},  # Different initializations
                 in_axes=None,
                 out_axes=-1,
                 axis_size=self.num_critics,
                 )
-        q_values = vmap_critic(depth=self.depth, scale=self.scale)(obs, action)
+        q_values = vmap_critic(depth=self.depth, scale=self.scale)(obs, action, train)
         return q_values
 
 class TanhGaussianActor(nn.Module):
@@ -242,31 +265,53 @@ def create_train_state(args, rng, network, dummy_input, lr=None):
             )
 
 """
-    Wrapper around Q net apply to handle normalization stats
+    Wrapper around Q net apply to handle spectral normalization stats
+
         Implicitly pass train=true
+        If not using any batch statistics, we simply pass empty dictionaries.
 """
+
+
 def make_q_apply_fn(q_net):
     def q_apply_fn(params, batch_stats, obs, action, train=True):
+
+        # Handle empty dicts when no normalization state is used
+        no_normalization = batch_stats is None
+
+        # Need to pass empty dicts if no norm
+        # But return same type (None) at the end
+        passed_stats = {} if no_normalization else batch_stats
+
         if train:
             outputs, new_state = q_net.apply(
-                {"params": params, "batch_stats": batch_stats},
+                {"params": params, "batch_stats": passed_stats},
                 obs,
                 action,
                 train=True,
                 mutable=["batch_stats"]
             )
+
+            if no_normalization:
+                return outputs, None
+
             return outputs, new_state["batch_stats"]
+
         else:
             outputs = q_net.apply(
-                {"params": params, "batch_stats": batch_stats},
+                {"params": params, "batch_stats": passed_stats},
                 obs,
                 action,
                 train=False,
                 mutable=False
             )
-            return outputs, batch_stats  # just reuse the current batch_stats
+
+            if no_normalization:
+                return outputs, None
+
+            return outputs, passed_stats  # just reuse the current batch_stats
 
     return q_apply_fn
+
 
 
 def eval_agent(args, rng, env, agent_state):
@@ -326,6 +371,7 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset):
         We stick to PBRL-s two stage schedule for beta_ood
     """
     assert args.beta_ood_start >= 1.0 
+    assert args.critic_norm in {"spectral", "layer", "none"}
     assert args.beta_ood_min < 1.0
     assert args.constant_beta_ood or args.beta_linear_decay_steps < args.num_updates
 
@@ -493,6 +539,7 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset):
             q_pred_ood, new_bs = q_apply_fn(params, 
                                             new_bs,
                                             states, ood_actions)
+
             q_pred_ood_next, new_bs = q_apply_fn(params, 
                                                  new_bs,
                                                  next_states, ood_actions_next)
