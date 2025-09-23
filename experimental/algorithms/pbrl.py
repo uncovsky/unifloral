@@ -102,6 +102,10 @@ class Args:
 AgentTrainState = namedtuple("AgentTrainState", "actor vec_q vec_q_target alpha pretrain_lag train_step")
 Transition = namedtuple("Transition", "obs action reward next_obs next_action done")
 
+
+class AugmentedTrainState(TrainState):
+    batch_stats: any = None
+
 """
     Initializers
 """
@@ -124,16 +128,19 @@ class SoftQNetwork(nn.Module):
     depth: int = 3
     learnable: bool = True
     @nn.compact
-    def __call__(self, obs, action):
+    def __call__(self, obs, action, train=True):
         x = jnp.concatenate([obs, action], axis=-1)
         for _ in range(self.depth):
-            x = nn.Dense(256, bias_init=constant(0.1))(x)
+            x = nn.SpectralNorm(nn.Dense(256, bias_init=constant(0.1)))(x, update_stats=train)
             x = nn.relu(x)
         if self.learnable:
             # For learnable Q-nets, we use a different last layer init
-            q = nn.Dense(1, kernel_init=sym(3e-3), bias_init=sym(3e-3))(x)
+            q = nn.SpectralNorm(nn.Dense(1, kernel_init=sym(3e-3),
+                                         bias_init=sym(3e-3)))(x, update_stats=train)
+
         else:
-            q = nn.Dense(1, kernel_init=he_normal, bias_init=sym(3e-3))(x)
+            q = nn.SpectralNorm(nn.Dense(1, kernel_init=he_normal,
+                                         bias_init=sym(3e-3)))(x, update_stats=train)
         return q.squeeze(-1)
 
 class RandomizedPriorQNetwork(nn.Module):
@@ -152,16 +159,17 @@ class RandomizedPriorQNetwork(nn.Module):
 class VectorQ(nn.Module):
     num_critics: int
     @nn.compact
-    def __call__(self, obs, action):
+    def __call__(self, obs, action, train=True):
         vmap_critic = nn.vmap(
-            SoftQNetwork, # all learnable
-            variable_axes={"params": 0},  # Parameters not shared between critics
-            split_rngs={"params": True, "dropout": True},  # Different initializations
-            in_axes=None,
-            out_axes=-1,
-            axis_size=self.num_critics,
-        )
-        q_values = vmap_critic()(obs, action)
+                SoftQNetwork, # all learnable
+                variable_axes={"params": 0, "batch_stats" : 0},  # Parameters not shared between critics
+                split_rngs={"params": True, "dropout": True},  # Different initializations
+                in_axes=None,
+                out_axes=-1,
+                axis_size=self.num_critics,
+
+                )
+        q_values = vmap_critic()(obs, action, train)
         return q_values
 
 class PriorVectorQ(nn.Module):
@@ -171,13 +179,13 @@ class PriorVectorQ(nn.Module):
     @nn.compact
     def __call__(self, obs, action):
         vmap_critic = nn.vmap(
-            RandomizedPriorQNetwork,
-            variable_axes={"params": 0},  # Parameters not shared between critics
-            split_rngs={"params": True, "dropout": True},  # Different initializations
-            in_axes=None,
-            out_axes=-1,
-            axis_size=self.num_critics,
-        )
+                RandomizedPriorQNetwork,
+                variable_axes={"params": 0},  # Parameters not shared between critics
+                split_rngs={"params": True, "dropout": True},  # Different initializations
+                in_axes=None,
+                out_axes=-1,
+                axis_size=self.num_critics,
+                )
         q_values = vmap_critic(depth=self.depth, scale=self.scale)(obs, action)
         return q_values
 
@@ -192,16 +200,16 @@ class TanhGaussianActor(nn.Module):
             x = nn.Dense(256, bias_init=constant(0.1))(x)
             x = nn.relu(x)
         log_std = nn.Dense(
-            self.num_actions, kernel_init=sym(1e-3), bias_init=sym(1e-3)
-        )(x)
+                self.num_actions, kernel_init=sym(1e-3), bias_init=sym(1e-3)
+                )(x)
         std = jnp.exp(jnp.clip(log_std, self.log_std_min, self.log_std_max))
         mean = nn.Dense(
-            self.num_actions, kernel_init=sym(1e-3), bias_init=sym(1e-3)
-        )(x)
+                self.num_actions, kernel_init=sym(1e-3), bias_init=sym(1e-3)
+                )(x)
         pi = distrax.Transformed(
-            distrax.Normal(mean, std),
-            distrax.Tanh(),
-        )
+                distrax.Normal(mean, std),
+                distrax.Tanh(),
+                )
         return pi
 
 
@@ -211,18 +219,54 @@ class EntropyCoef(nn.Module):
     @nn.compact
     def __call__(self) -> jnp.ndarray:
         log_ent_coef = self.param(
-            "log_ent_coef",
-            init_fn=lambda key: jnp.full((), jnp.log(self.ent_coef_init)),
-        )
+                "log_ent_coef",
+                init_fn=lambda key: jnp.full((), jnp.log(self.ent_coef_init)),
+                )
         return log_ent_coef
 
 
+def create_aug_train_state(args, rng, network, dummy_input, lr=None):
+    variables = network.init(rng, *dummy_input)
+    return AugmentedTrainState.create(
+            apply_fn=network.apply,
+            params=variables.get("params"),
+            batch_stats = variables.get("batch_stats", None),
+            tx=optax.adam(lr if lr is not None else args.lr, eps=1e-5),
+            )
+
 def create_train_state(args, rng, network, dummy_input, lr=None):
-    return TrainState.create(
-        apply_fn=network.apply,
-        params=network.init(rng, *dummy_input),
-        tx=optax.adam(lr if lr is not None else args.lr, eps=1e-5),
-    )
+    return AugmentedTrainState.create(
+            apply_fn=network.apply,
+            params = network.init(rng, *dummy_input),
+            tx=optax.adam(lr if lr is not None else args.lr, eps=1e-5),
+            )
+
+"""
+    Wrapper around Q net apply to handle normalization stats
+        Implicitly pass train=true
+"""
+def make_q_apply_fn(q_net):
+    def q_apply_fn(params, batch_stats, obs, action, train=True):
+        if train:
+            outputs, new_state = q_net.apply(
+                {"params": params, "batch_stats": batch_stats},
+                obs,
+                action,
+                train=True,
+                mutable=["batch_stats"]
+            )
+            return outputs, new_state["batch_stats"]
+        else:
+            outputs = q_net.apply(
+                {"params": params, "batch_stats": batch_stats},
+                obs,
+                action,
+                train=False,
+                mutable=False
+            )
+            return outputs, batch_stats  # just reuse the current batch_stats
+
+    return q_apply_fn
 
 
 def eval_agent(args, rng, env, agent_state):
@@ -270,7 +314,7 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset):
     Make JIT-compatible agent train step.
 
         Setup scheduling and regularizer fns.
-        
+
         Ensemble regularizer (diversity)
             If set to "none", ensemble regularizer fn will be a no-op.
     """
@@ -292,7 +336,7 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset):
     else:
         """
             Scheduling for beta_ood
-         
+
                 First decay linearly to 1.0
         """
         linear_schedule_fn = linear_schedule(start=args.beta_ood_start, end=1.0, max_steps=args.beta_linear_decay_steps)
@@ -326,8 +370,8 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset):
         # --- Sample batch ---
         rng, rng_batch = jax.random.split(rng)
         batch_indices = jax.random.randint(
-            rng_batch, (args.batch_size,), 0, len(dataset.obs)
-        )
+                rng_batch, (args.batch_size,), 0, len(dataset.obs)
+                )
         batch = jax.tree_util.tree_map(lambda x: x[batch_indices], dataset)
 
         # --- Update alpha ---
@@ -346,8 +390,8 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset):
 
         rng, rng_alpha = jax.random.split(rng)
         alpha_loss, alpha_grad = _alpha_loss_fn(
-            agent_state.alpha.params, rng_alpha
-        )
+                agent_state.alpha.params, rng_alpha
+                )
         updated_alpha = agent_state.alpha.apply_gradients(grads=alpha_grad)
         agent_state = agent_state._replace(alpha=updated_alpha)
         alpha = jnp.exp(alpha_apply_fn(agent_state.alpha.params))
@@ -377,10 +421,22 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset):
 
         # --- Get values ----
         # --- Bootstrap actions with target nets ---
-        next_q = q_apply_fn(agent_state.vec_q_target.params, batch.next_obs, bootstrap_actions)
+        next_q, _ = q_apply_fn(agent_state.vec_q_target.params, 
+                               agent_state.vec_q_target.batch_stats,
+                               batch.next_obs, bootstrap_actions, train=False)
+
+
         # --- OOD actions with current Q nets --- 
-        ood_q = q_apply_fn(agent_state.vec_q.params, states, ood_actions)
-        ood_q_next = q_apply_fn(agent_state.vec_q.params, next_states, ood_actions_next)
+        ood_q, new_bs = q_apply_fn(agent_state.vec_q.params, 
+                                   agent_state.vec_q.batch_stats,
+                                   states, ood_actions)
+
+        ood_q_next, new_bs = q_apply_fn(agent_state.vec_q.params,
+                                        new_bs,
+                                        next_states, ood_actions_next)
+
+
+        agent_state = agent_state._replace(vec_q=agent_state.vec_q.replace(batch_stats=new_bs))
 
         # [B, 1]
         std_q_next = next_q.std(-1, keepdims=True)
@@ -394,7 +450,7 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset):
             OOD targets
         """
         ood_target_curr = ood_q - beta_ood * std_q_ood
-        
+
         """
             PBRL keeps ood penalty for next state actions
             as fixed 0.1 for some reason.
@@ -421,7 +477,9 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset):
         def _q_loss_fn(params):
 
             # [B, ensemble_size]
-            q_pred = q_apply_fn(params, batch.obs, batch.action)
+            q_pred, new_bs = q_apply_fn(params, 
+                                        agent_state.vec_q.batch_stats,
+                                        batch.obs, batch.action)
 
             # Bellman error
             critic_loss = jnp.square((q_pred - td_target))
@@ -432,8 +490,12 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset):
                 OOD regularization
             """
             # Q(s,a) for a ~ pi(s), shape [B * ood_actions_sampled, ensemble_size]
-            q_pred_ood = q_apply_fn(params, states , ood_actions)
-            q_pred_ood_next = q_apply_fn(params, next_states, ood_actions_next)
+            q_pred_ood, new_bs = q_apply_fn(params, 
+                                            new_bs,
+                                            states, ood_actions)
+            q_pred_ood_next, new_bs = q_apply_fn(params, 
+                                                 new_bs,
+                                                 next_states, ood_actions_next)
 
             # on current states
             ood_loss = jnp.square(q_pred_ood - ood_target_curr).sum(-1).mean()
@@ -447,25 +509,28 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset):
             regularizer_loss = ensemble_reg_loss(params, rng_reg_loss, batch)
             critic_loss += args.reg_lagrangian * regularizer_loss
 
-            return critic_loss, (ood_loss, regularizer_loss, q_pred.mean(), \
-                                 q_pred.std(), q_pred_ood.mean(), q_pred_ood.std())
+            return critic_loss, (new_bs, ood_loss, regularizer_loss, q_pred.mean(), \
+                    q_pred.std(), q_pred_ood.mean(), q_pred_ood.std())
 
-        (critic_loss, (ood_loss, regularizer_loss, q_pred_mean, q_pred_std,
+        (critic_loss, (new_bs, ood_loss,regularizer_loss, q_pred_mean, q_pred_std,
                        q_pred_ood_mean, q_pred_ood_std)), critic_grad = _q_loss_fn(agent_state.vec_q.params)
 
-        updated_q = agent_state.vec_q.apply_gradients(grads=critic_grad)
+        updated_q = agent_state.vec_q.apply_gradients(grads=critic_grad, 
+                                                      batch_stats=new_bs)
+        # Update state
         agent_state = agent_state._replace(vec_q=updated_q)
 
         # --- Update Q target network ---
         updated_q_target_params = optax.incremental_update(
-            agent_state.vec_q.params,
-            agent_state.vec_q_target.params,
-            args.polyak_step_size,
-        )
+                agent_state.vec_q.params,
+                agent_state.vec_q_target.params,
+                args.polyak_step_size,
+                )
         updated_q_target = agent_state.vec_q_target.replace(
-            step=agent_state.vec_q_target.step + 1,
-            params=updated_q_target_params,
-        )
+                step=agent_state.vec_q_target.step + 1,
+                params=updated_q_target_params,
+                batch_stats=agent_state.vec_q.batch_stats  # copy batch_stats
+                )
         agent_state = agent_state._replace(vec_q_target=updated_q_target)
 
         # --- Update actor ---
@@ -475,9 +540,11 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset):
                 pi = actor_apply_fn(params, transition.obs)
                 sampled_action, log_pi = pi.sample_and_log_prob(seed=rng)
                 log_pi = log_pi.sum()
-                q_values = q_apply_fn(
-                    agent_state.vec_q.params, transition.obs, sampled_action
-                )
+                q_values, new_bs = q_apply_fn(
+                        agent_state.vec_q.params,
+                        agent_state.vec_q.batch_stats,
+                        transition.obs, sampled_action
+                        )
 
                 std_q = q_values.std(-1)
                 # Use minimum as PI operator
@@ -487,33 +554,37 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset):
             rng = jax.random.split(rng, args.batch_size)
             loss, entropy, q_lcb, q_std = jax.vmap(_compute_loss)(rng, batch)
             # compute mean q-value and mean std over actions
-            return loss.mean(), (entropy.mean(), q_lcb.mean(), q_std.mean())
+            return loss.mean(), (new_bs, entropy.mean(), q_lcb.mean(), q_std.mean())
 
         rng, rng_actor = jax.random.split(rng)
-        (actor_loss, (entropy, q_lcb, q_std)), actor_grad = (
-            _actor_loss_function(agent_state.actor.params, rng_actor)
-        )
+        (actor_loss, (new_bs, entropy, q_lcb, q_std)), actor_grad = (
+                _actor_loss_function(agent_state.actor.params, rng_actor)
+                )
         updated_actor = agent_state.actor.apply_gradients(grads=actor_grad)
-        agent_state = agent_state._replace(actor=updated_actor)
+
+        # --- Update actor and batch statistics again ---
+        agent_state = agent_state._replace(actor=updated_actor, 
+                                          vec_q=agent_state.vec_q.replace(batch_stats=new_bs))
 
         # --- Increment training step ---
         agent_state = agent_state._replace(train_step=agent_state.train_step + 1)
+       
 
         loss = {
-            "critic_loss": critic_loss,
-            "beta_ood": beta_ood,
-            "actor_loss": actor_loss,
-            "alpha_loss": alpha_loss,
-            "regularizer_loss": regularizer_loss,
-            "ood_loss": ood_loss,
-            "entropy": entropy,
-            "alpha": alpha,
-            "actor_q_lcb": q_lcb,
-            "q_pred_mean" : q_pred_mean,
-            "q_pred_std": q_pred_std,
-            "q_pred_ood_mean": q_pred_ood_mean,
-            "q_pred_ood_std": q_pred_ood_std,
-        }
+                "critic_loss": critic_loss,
+                "beta_ood": beta_ood,
+                "actor_loss": actor_loss,
+                "alpha_loss": alpha_loss,
+                "regularizer_loss": regularizer_loss,
+                "ood_loss": ood_loss,
+                "entropy": entropy,
+                "alpha": alpha,
+                "actor_q_lcb": q_lcb,
+                "q_pred_mean" : q_pred_mean,
+                "q_pred_std": q_pred_std,
+                "q_pred_ood_mean": q_pred_ood_mean,
+                "q_pred_ood_std": q_pred_ood_std,
+                }
 
         return (rng, agent_state), loss
 
@@ -527,12 +598,12 @@ def train(args):
     # --- Initialize logger ---
     if args.log:
         wandb.init(
-            config=args,
-            project=args.wandb_project,
-            entity=args.wandb_team,
-            group=args.wandb_group,
-            job_type="train_agent",
-        )
+                config=args,
+                project=args.wandb_project,
+                entity=args.wandb_team,
+                group=args.wandb_group,
+                job_type="train_agent",
+                )
 
     dataset_wrapper = OfflineDatasetWrapper(source=args.dataset_source,
                                             dataset=args.dataset_name)
@@ -543,13 +614,13 @@ def train(args):
 
     dataset = dataset_wrapper.get_dataset()
     dataset = Transition(
-        obs=jnp.array(dataset["observations"]),
-        action=jnp.array(dataset["actions"]),
-        reward=jnp.array(dataset["rewards"]),
-        next_obs=jnp.array(dataset["next_observations"]),
-        next_action=jnp.roll(jnp.array(dataset["actions"]), -1, axis=0),
-        done=jnp.array(dataset["terminals"]),
-    )
+            obs=jnp.array(dataset["observations"]),
+            action=jnp.array(dataset["actions"]),
+            reward=jnp.array(dataset["rewards"]),
+            next_obs=jnp.array(dataset["next_observations"]),
+            next_action=jnp.roll(jnp.array(dataset["actions"]), -1, axis=0),
+            done=jnp.array(dataset["terminals"]),
+            )
 
     # --- Initialize agent and value networks ---
     num_actions = env.single_action_space.shape[0]
@@ -573,21 +644,24 @@ def train(args):
     rng, rng_actor, rng_q, rng_alpha, rng_lag = jax.random.split(rng, 5)
     agent_state = AgentTrainState(
         actor=create_train_state(args, rng_actor, actor_net, [dummy_obs], args.actor_lr),
-        vec_q=create_train_state(args, rng_q, q_net, [dummy_obs, dummy_action]),
-        vec_q_target=create_train_state(args, rng_q, q_net, [dummy_obs, dummy_action]),
+        vec_q=create_aug_train_state(args, rng_q, q_net, [dummy_obs, dummy_action]),
+        vec_q_target=create_aug_train_state(args, rng_q, q_net, [dummy_obs, dummy_action]),
         alpha=create_train_state(args, rng_alpha, alpha_net, []),
         pretrain_lag=jnp.full((), args.pretrain_lag_init, dtype=jnp.float32),
         train_step=jnp.full((), 0, dtype=jnp.float32),
     )
 
+    # --- Wrap Q apply fn ---
+    q_apply = make_q_apply_fn(q_net)
+
     # --- Make train step ---
     _agent_train_step_fn = make_train_step(
-        args, actor_net.apply, q_net.apply, alpha_net.apply, dataset
+        args, actor_net.apply, q_apply, alpha_net.apply, dataset
     )
 
     # --- Make pretrain step ---
     _agent_pretrain_step_fn = make_pretrain_step(
-        args, actor_net.apply, q_net.apply, alpha_net.apply, dataset
+        args, actor_net.apply, q_apply, alpha_net.apply, dataset
     )
 
     """
