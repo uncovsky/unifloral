@@ -22,6 +22,9 @@ import wandb
 
 from infra import make_pretrain_step, select_regularizer
 from infra.dataset import OfflineDatasetWrapper
+from infra.utils import linear_schedule, constant_schedule
+
+
 
 os.environ["XLA_FLAGS"] = "--xla_gpu_triton_gemm_any=True"
 
@@ -32,7 +35,7 @@ os.environ["XLA_FLAGS"] = "--xla_gpu_triton_gemm_any=True"
 def create_checkpoint_dir():
     time_str = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     dir_name = f"{args.algorithm}_{args.dataset_name.replace('/', '.')}/{time_str}"
-    ckpt_dir = os.path.join(args.checkpoint_dir, dir_name)
+    ckpt_dir = os.path.join("./checkpoints", dir_name)
     ckpt_dir = os.path.abspath(ckpt_dir)
     os.makedirs(ckpt_dir, exist_ok=True)
 
@@ -55,13 +58,12 @@ class Args:
     seed: int = 0
     dataset_source : str = "d4rl"
     dataset_name: str = "halfcheetah-medium-v2"
-    algorithm: str = "sac_n"
-    num_updates: int = 3_000_000
+    algorithm: str = "pbrl"
+    num_updates: int = 1_000_000
     eval_interval: int = 2500
     eval_workers: int = 8
     eval_final_episodes: int = 1000
     checkpoint : bool = False
-    checkpoint_dir: str = "./checkpoints"
     # --- Logging ---
     log: bool = False
     wandb_project: str = "unifloral"
@@ -74,6 +76,11 @@ class Args:
     polyak_step_size: float = 0.005
     # --- SAC-N ---
     num_critics: int = 10
+    # --- PBRL --- 
+    regularization_mode: str = "pbrl" # pbrl, weighted_cql, filtering
+    beta_id : float = 0.01
+    beta_ood: float = 5.0
+    adaptive_epsilon: float = 0.1
     # ---  Pretraining ---
     pretrain_updates : int = 0
     pretrain_loss : str = "bc+sarsa"
@@ -87,17 +94,7 @@ class Args:
     randomized_prior_scale : float = 1.0
 
 
-r"""
-     |\  __
-     \| /_/
-      \|
-    ___|_____
-    \       /
-     \     /
-      \___/     Preliminaries
-"""
-
-AgentTrainState = namedtuple("AgentTrainState", "actor vec_q vec_q_target alpha pretrain_lag")
+AgentTrainState = namedtuple("AgentTrainState", "actor vec_q vec_q_target alpha pretrain_lag train_step")
 Transition = namedtuple("Transition", "obs action reward next_obs next_action done")
 
 """
@@ -129,7 +126,6 @@ class SoftQNetwork(nn.Module):
             q = nn.Dense(1, kernel_init=sym(3e-3), bias_init=sym(3e-3))(x)
         else:
             q = nn.Dense(1, kernel_init=he_normal, bias_init=sym(3e-3))(x)
-
         return q.squeeze(-1)
 
 class RandomizedPriorQNetwork(nn.Module):
@@ -191,7 +187,9 @@ class TanhGaussianActor(nn.Module):
             self.num_actions, kernel_init=sym(1e-3), bias_init=sym(1e-3)
         )(x)
         std = jnp.exp(jnp.clip(log_std, self.log_std_min, self.log_std_max))
-        mean = nn.Dense(self.num_actions, kernel_init=sym(1e-3), bias_init=sym(1e-3))(x)
+        mean = nn.Dense(
+            self.num_actions, kernel_init=sym(1e-3), bias_init=sym(1e-3)
+        )(x)
         pi = distrax.Transformed(
             distrax.Normal(mean, std),
             distrax.Tanh(),
@@ -211,11 +209,11 @@ class EntropyCoef(nn.Module):
         return log_ent_coef
 
 
-def create_train_state(args, rng, network, dummy_input):
+def create_train_state(args, rng, network, dummy_input, lr=None):
     return TrainState.create(
         apply_fn=network.apply,
         params=network.init(rng, *dummy_input),
-        tx=optax.adam(args.lr, eps=1e-5),
+        tx=optax.adam(lr if lr is not None else args.lr, eps=1e-5),
     )
 
 
@@ -226,7 +224,12 @@ def eval_agent(args, rng, env, agent_state):
     cum_reward = onp.zeros(args.eval_workers)
     rng, rng_reset = jax.random.split(rng)
     rng_reset = jax.random.split(rng_reset, args.eval_workers)
-    obs = env.reset()
+
+    def _rng_to_integer_seed(rng):
+        return int(jax.random.randint(rng, (), 0, jnp.iinfo(jnp.int32).max))
+
+    seeds_reset = [_rng_to_integer_seed(rng) for rng in rng_reset]
+    obs = env.reset(seed=seeds_reset)
 
     # --- Rollout agent ---
     @jax.jit
@@ -254,28 +257,42 @@ def eval_agent(args, rng, env, agent_state):
     return cum_reward
 
 
-r"""
-          __/)
-       .-(__(=:
-    |\ |    \)
-    \ ||
-     \||
-      \|
-    ___|_____
-    \       /
-     \     /
-      \___/     Agent
-"""
-
-
 def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset):
     """Make JIT-compatible agent train step."""
 
-    # Select regularizer based on args
+    """
+        Ensemble regularizer (diversity)
+
+            If set to "none", ensemble regularizer fn will be a no-op.
+    """
     ensemble_regularizer_fn = select_regularizer(args, actor_apply_fn, q_apply_fn)
+
+
+    """
+        OOD-regularization
+    """
+    if args.regularization_mode not in ["pbrl", "weighted_cql", "filtering"]:
+        raise NotImplementedError(f"Regularization mode {args.regularization_mode} not implemented")
+    print("Using OOD-regularization mode: ", args.regularization_mode)
+
+    """
+        Select schedule for lagrangian parameter of OOD regularization
+            For "pbrl" smoothly decay beta_ood as in PBRL paper from initial value to 0.2
+    """
+    if args.regularization_mode != "weighted_cql":
+        schedule_fn = linear_schedule(start=args.beta_ood, end=0.2, max_steps=args.num_updates)
+    else:
+        # don't vary the cql penalty
+        schedule_fn = constant_schedule(args.beta_ood)
+
+
 
     def _train_step(runner_state, _):
         rng, agent_state = runner_state
+
+        # --- Get scheduled parameters ---
+        step = agent_state.train_step
+        beta_ood = schedule_fn(step)
 
         # --- Sample batch ---
         rng, rng_batch = jax.random.split(rng)
@@ -299,7 +316,9 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset):
             return log_alpha * (entropy - target_entropy)
 
         rng, rng_alpha = jax.random.split(rng)
-        alpha_loss, alpha_grad = _alpha_loss_fn(agent_state.alpha.params, rng_alpha)
+        alpha_loss, alpha_grad = _alpha_loss_fn(
+            agent_state.alpha.params, rng_alpha
+        )
         updated_alpha = agent_state.alpha.apply_gradients(grads=alpha_grad)
         agent_state = agent_state._replace(alpha=updated_alpha)
         alpha = jnp.exp(alpha_apply_fn(agent_state.alpha.params))
@@ -314,16 +333,20 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset):
                 q_values = q_apply_fn(
                     agent_state.vec_q.params, transition.obs, sampled_action
                 )
-                q_min = jnp.min(q_values)
-                return -q_min + alpha * log_pi, -log_pi, q_min, q_values.std()
+
+                std_q = q_values.std(-1)
+                # Use minimum as PI operator
+                q_tgt = q_values.min(-1)
+                return -q_tgt + alpha * log_pi, -log_pi, q_tgt, std_q
 
             rng = jax.random.split(rng, args.batch_size)
-            loss, entropy, q_min, q_std = jax.vmap(_compute_loss)(rng, batch)
-            return loss.mean(), (entropy.mean(), q_min.mean(), q_std.mean())
+            loss, entropy, q_lcb, q_std = jax.vmap(_compute_loss)(rng, batch)
+            # compute mean q-value and mean std over actions
+            return loss.mean(), (entropy.mean(), q_lcb.mean(), q_std.mean())
 
         rng, rng_actor = jax.random.split(rng)
-        (actor_loss, (entropy, q_pred_min, q_pred_std)), actor_grad = _actor_loss_function(
-            agent_state.actor.params, rng_actor
+        (actor_loss, (entropy, q_lcb, q_std)), actor_grad = (
+            _actor_loss_function(agent_state.actor.params, rng_actor)
         )
         updated_actor = agent_state.actor.apply_gradients(grads=actor_grad)
         agent_state = agent_state._replace(actor=updated_actor)
@@ -335,78 +358,157 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset):
             args.polyak_step_size,
         )
         updated_q_target = agent_state.vec_q_target.replace(
-            step=agent_state.vec_q_target.step + 1, params=updated_q_target_params
+            step=agent_state.vec_q_target.step + 1,
+            params=updated_q_target_params,
         )
         agent_state = agent_state._replace(vec_q_target=updated_q_target)
 
-        # --- Compute targets ---
-        def _sample_next_v(rng, transition):
-            next_pi = actor_apply_fn(agent_state.actor.params, transition.next_obs)
+        # --- Compute targets, for both OOD and ID actions ---
+        def _get_transition_values(rng, transition):
+
+            rng_next, rng_pi = jax.random.split(rng)
+
+            # Get policies for next state and current state
+            next_pi = actor_apply_fn(
+                agent_state.actor.params, transition.next_obs
+            )
+            pi = actor_apply_fn(
+                agent_state.actor.params, transition.obs
+            )
+
+            # Sample actions from pi(.|s) and pi(.|s')
             # Note: Important to use sample_and_log_prob here for numerical stability
             # See https://github.com/deepmind/distrax/issues/7
-            next_action, log_next_pi = next_pi.sample_and_log_prob(seed=rng)
-            # Minimum of the target Q-values
+            next_action, log_next_pi = next_pi.sample_and_log_prob(seed=rng_next)
+            action, log_pi = pi.sample_and_log_prob(seed=rng_pi)
+
+            # Keep independent targets [B, ensemble_size], do not reduce via min(-1)
+            # Get the Q-values for the next state and actions
             next_q = q_apply_fn(
-                agent_state.vec_q_target.params, transition.next_obs, next_action
+                agent_state.vec_q_target.params,
+                transition.next_obs,
+                next_action,
             )
-            return next_q.min(-1) - alpha * log_next_pi.sum(-1)
 
-        rng, rng_next_v = jax.random.split(rng)
-        rng_next_v = jax.random.split(rng_next_v, args.batch_size)
-        next_v_target = jax.vmap(_sample_next_v)(rng_next_v, batch)
-        target = batch.reward + args.gamma * (1 - batch.done) * next_v_target
+            q = q_apply_fn(
+                agent_state.vec_q.params,
+                transition.obs,
+                action,
+            )
 
-        rng, rng_reg, rng_reg_loss = jax.random.split(rng, 3)
+            batch_q = q_apply_fn(
+                    agent_state.vec_q.params,
+                    transition.obs,
+                    transition.action,
+            )
+            # Don't augment values with entropy here
+            return batch_q, q, next_q, next_action, log_pi.sum(-1), log_next_pi.sum(-1)
+
+        # --- Get values ----
+        rng, rng_values = jax.random.split(rng)
+        rng_values = jax.random.split(rng_values, args.batch_size)
+        v_batch, v_curr, v_next, ood_actions, logprobs_curr, logprobs_next = jax.vmap(_get_transition_values)(rng_values, batch)
+
+        # compute ensemble std for each Q(s, a) 
+        # shape [B, ]
+        std_v_next = v_next.std(-1)
+        std_v_curr = v_curr.std(-1)
+        std_v_batch = v_batch.std(-1)
+        logprobs_next = logprobs_next.reshape(-1, 1)
+
+        # Compute ratio of stds of sampled (OOD actions) to the batch
+        std_ratio = (std_v_curr / (std_v_batch + std_v_curr + 1e-6)).clip(0.0, 1.0)
+
+        # --- Calculate Targets for TD backups ---
+        if args.regularization_mode == "weighted_cql":
+            # MSG + weighted CQL regularization
+            # Do not penalize ID during bellman backup
+            next_v_target = v_next - alpha * logprobs_next
+            # OOD penalization is done via a weighted CQL loss by the std_ratio
+        else:
+            next_v_target = v_next - alpha * logprobs_next - args.beta_id * std_v_next.reshape(-1, 1)
+            # OOD penalty with ensemble std in current state
+            ood_target = v_curr - beta_ood * std_v_curr.reshape(-1, 1)
+
+            # per state-action pair OOD mask for potential filtering
+            ood_mask = (std_ratio >= 0.5 + args.adaptive_epsilon).astype(jnp.float32)
+
+
+        # Target for standard TD backup
+        target = jnp.expand_dims(batch.reward, -1) + args.gamma * jnp.expand_dims((1 - batch.done), -1) * next_v_target
         # --- Get specialized loss function with current state --- 
+        rng, rng_reg, rng_reg_loss = jax.random.split(rng, 3)
         ensemble_reg_loss = ensemble_regularizer_fn(agent_state, rng_reg, batch)
-
 
         # --- Update critics ---
         @partial(jax.value_and_grad, has_aux=True)
         def _q_loss_fn(params):
+            # [B, ensemble_size]
             q_pred = q_apply_fn(params, batch.obs, batch.action)
-            critic_loss = jnp.square((q_pred - jnp.expand_dims(target, -1))).sum(-1).mean()
+            critic_loss = jnp.square((q_pred - target))
+            # Take mean over batch and sum over ensembles
+            critic_loss = critic_loss.sum(-1).mean()
+            # Q(s,a) for a ~ pi(s), shape [B, ensemble_size]
+            pi_q = q_apply_fn(params, batch.obs, ood_actions)
+
+            # OOD regularization
+            if args.regularization_mode == "weighted_cql":
+                # [B, ] losses for each ood action 
+                cql_loss = std_ratio * (pi_q - q_pred).sum(-1)
+                # CQL regularizer + Diversity regularizer
+                critic_loss += beta_ood * cql_loss.mean()
+                # No ood TD-regularization
+                ood_loss = jnp.array(0.0)
+            else:
+
+                ood_loss = jnp.square((q_pred - ood_target)).sum(-1)
+                if args.regularization_mode == "filtering":
+                    # Mask out state-action pairs that are sufficiently in-distribution
+                    ood_loss = (ood_mask * ood_loss)
+                critic_loss += ood_loss.mean()
+                cql_loss = jnp.array(0.0)
+
+            # Diversity regularizer
             regularizer_loss = ensemble_reg_loss(params, rng_reg_loss, batch)
+            # Add diversity regularizer
             critic_loss += args.reg_lagrangian * regularizer_loss
-            return critic_loss, (regularizer_loss, q_pred.mean())
 
-        # --- Sample actions from pi and get their std for logging --- 
-        def _sample_actions(rng, obs):
-            pi = actor_apply_fn(agent_state.actor.params, obs)
-            return pi.sample(seed=rng)
-        rng, rng_pi = jax.random.split(rng, 2)
-        pi_actions = _sample_actions(rng_pi, batch.obs)
-        pi_qs = q_apply_fn(agent_state.vec_q.params, batch.obs, pi_actions)
+            return critic_loss, (cql_loss, ood_loss, regularizer_loss, q_pred.mean(), q_pred.std(),
+                                 pi_q.mean(), pi_q.std())
 
-        pi_q_mean = pi_qs.mean()
-        pi_q_std = pi_qs.std(-1).mean()
+        (critic_loss, (cql_loss, ood_loss, regularizer_loss, q_pred_mean, q_pred_std, pi_q_mean, pi_q_std)), critic_grad = _q_loss_fn(agent_state.vec_q.params)
 
-        (critic_loss, (regularizer_loss, q_pred_mean)), critic_grad = _q_loss_fn(agent_state.vec_q.params)
         updated_q = agent_state.vec_q.apply_gradients(grads=critic_grad)
         agent_state = agent_state._replace(vec_q=updated_q)
 
+
+        # --- Increment training step ---
+        agent_state = agent_state._replace(train_step=agent_state.train_step + 1)
 
         loss = {
             "critic_loss": critic_loss,
             "actor_loss": actor_loss,
             "alpha_loss": alpha_loss,
+            "cql_loss": cql_loss,
             "regularizer_loss": regularizer_loss,
+            "ood_loss": ood_loss,
             "entropy": entropy,
             "alpha": alpha,
-            "q_pred_min": q_pred_min,
-            "q_pred_mean": q_pred_mean,
+            "actor_q_lcb": q_lcb,
+            "q_pred_mean" : q_pred_mean,
             "q_pred_std": q_pred_std,
             "pi_q_mean": pi_q_mean,
-            "pi_q_std": pi_q_std,
+            "pi_q_std": pi_q_std
         }
+
         return (rng, agent_state), loss
 
     return _train_step
 
 
+
 def train(args):
     rng = jax.random.PRNGKey(args.seed)
-    
 
     # --- Initialize logger ---
     if args.log:
@@ -461,6 +563,7 @@ def train(args):
         vec_q_target=create_train_state(args, rng_q, q_net, [dummy_obs, dummy_action]),
         alpha=create_train_state(args, rng_alpha, alpha_net, []),
         pretrain_lag=jnp.full((), args.pretrain_lag_init, dtype=jnp.float32),
+        train_step=jnp.full((), 0, dtype=jnp.float32),
     )
 
     # --- Make train step ---
@@ -580,8 +683,6 @@ def train(args):
 
     if args.log:
         wandb.finish()
-
-
 
 if __name__ == "__main__":
     # --- Parse arguments ---

@@ -20,9 +20,8 @@ import optax
 import tyro
 import wandb
 
-from infra.ensemble_regularization import select_regularizer
-from infra.pretraining import make_pretrain_step
-from infra.offline_dataset_wrapper import OfflineDatasetWrapper
+from infra import select_regularizer, make_pretrain_step
+from infra.dataset import OfflineDatasetWrapper
 
 os.environ["XLA_FLAGS"] = "--xla_gpu_triton_gemm_any=True"
 
@@ -33,7 +32,7 @@ os.environ["XLA_FLAGS"] = "--xla_gpu_triton_gemm_any=True"
 def create_checkpoint_dir():
     time_str = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     dir_name = f"{args.algorithm}_{args.dataset_name.replace('/', '.')}/{time_str}"
-    ckpt_dir = os.path.join("./checkpoints", dir_name)
+    ckpt_dir = os.path.join(args.checkpoint_dir, dir_name)
     ckpt_dir = os.path.abspath(ckpt_dir)
     os.makedirs(ckpt_dir, exist_ok=True)
 
@@ -45,7 +44,8 @@ def create_checkpoint_dir():
     return ckpt_dir
 
 def save_train_state(train_state, ckpt_dir, step):
-    checkpoints.save_checkpoint(ckpt_dir, target=train_state, step=step)
+    checkpoints.save_checkpoint(ckpt_dir, target=train_state, step=step,
+                                overwrite=False, keep=2)
     print(f"Checkpoint saved at step {step} in {ckpt_dir}")
 
 
@@ -55,12 +55,13 @@ class Args:
     seed: int = 0
     dataset_source : str = "d4rl"
     dataset_name: str = "halfcheetah-medium-v2"
-    algorithm: str = "sac_n"
+    algorithm: str = "msg"
     num_updates: int = 3_000_000
     eval_interval: int = 2500
     eval_workers: int = 8
     eval_final_episodes: int = 1000
     checkpoint : bool = False
+    checkpoint_dir: str = "./checkpoints"
     # --- Logging ---
     log: bool = False
     wandb_project: str = "unifloral"
@@ -74,6 +75,7 @@ class Args:
     # --- SAC-N ---
     num_critics: int = 10
     # --- MSG ---
+    actor_lr : float = 1e-4
     pi_operator: str = "lcb"
     cql_min_q_weight: float = 0.5
     actor_lcb_coef: float = 4.0
@@ -411,8 +413,7 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset):
             critic_loss = critic_loss.sum(-1).mean()
             # Q(s,a) for a ~ pi(s), shape [B, ensemble_size]
             pi_q = q_apply_fn(params, batch.obs, pi_actions)
-            # [B, 1] for each s in batch, reduce over ensemble dim
-            cql_loss = (pi_q - q_pred).sum(-1).mean()
+            cql_loss = pi_q.mean() - q_pred.mean()
             regularizer_loss = ensemble_reg_loss(params, rng_reg_loss, batch)
 
             # CQL regularizer + Diversity regularizer
@@ -500,7 +501,7 @@ def train(args):
     # Target networks share seeds to match initialization
     rng, rng_actor, rng_q, rng_alpha, rng_lag = jax.random.split(rng, 5)
     agent_state = AgentTrainState(
-        actor=create_train_state(args, rng_actor, actor_net, [dummy_obs]),
+        actor=create_train_state(args, rng_actor, actor_net, [dummy_obs], args.actor_lr),
         vec_q=create_train_state(args, rng_q, q_net, [dummy_obs, dummy_action]),
         vec_q_target=create_train_state(args, rng_q, q_net, [dummy_obs, dummy_action]),
         alpha=create_train_state(args, rng_alpha, alpha_net, []),

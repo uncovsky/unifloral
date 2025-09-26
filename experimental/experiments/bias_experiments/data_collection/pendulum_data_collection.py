@@ -9,135 +9,143 @@ from datetime import datetime
 from minari import DataCollector
 import random
 
+import torch
+import tqdm
+import stable_baselines3 as sb3
 
-def gaussian_mixture_policy(_):
+# Fix seed to 15 for a specific initial state 
+seed = 15
 
-    """
-        GMM for Pendulum, other envs need to adjust clipping and dimensionality!
-    """
+def train_expert_policy(env_name='Pendulum-v1', total_timesteps=500000,
+                        save_path='sac_expert'):
 
-    # mix of two gaussians with means -1 and 1, stddev 0.5
-    # Flip coin for gaussian mixture
-    coin = random.uniform(0, 1)
-    mean = -1 if coin < 0.5 else 1
-    stddev = 0.2
-
-    # Sample from the gaussian
-    act = np.random.normal(loc=mean, scale=stddev)
-
-    act = np.clip(act, -2, 2)  # Clip to action space limits
-    return np.array([act], dtype=np.float32)
-
-def uniform_mixture_policy(_):
-    """
-        Mixture of two uniform distributions [-2, -1] and [1, 2]
-    """
-    coin = random.uniform(0, 1)
-    if coin < 0.5:
-        res = np.random.uniform(low=-2, high=-1)
-    else:
-        res = np.random.uniform(low=1, high=2)
-    return np.array([res], dtype=np.float32)
+    env = gym.make(env_name)
+    model = sb3.SAC('MlpPolicy', env, verbose=1)
+    model.learn(total_timesteps=total_timesteps)
+    model.save(save_path)
+    env.close()
+    return model
 
 
-def uniform_policy(_):
-    # just sample uniformly, turn to array
-    res = np.random.uniform(low=-2, high=2)
-    return np.array([res], dtype=np.float32)  
 
+def get_q_values(model, env, num_points=1000, seed=0):
 
-def collect_agent_dataset(env, agent, dataset_size, dataset_name, seed=42):
+    # Create a grid of actions
+    low, high = env.action_space.low, env.action_space.high
+    actions = np.linspace(low, high, num_points)
 
-    """
-        Collects a minari dataset on `env` using `agent` across the entire
-        interaction.
-    """
+    # Get starting state
+    state = env.reset(seed=seed)[0]
 
-    # wrap env in DataCollector to collect data
-    env = DataCollector(env)
+    # move everything to cpu
+    actions_tensor = torch.tensor(actions, dtype=torch.float32).cpu()
+    state_tensor = torch.tensor(state,
+                                dtype=torch.float32).unsqueeze(0).repeat(num_points, 1).cpu()
 
-    step = 0
+    # Compute Q-values for each state-action pair
+    # move model to cpu
+    model.critic.to('cpu')
+    q_values = model.critic(state_tensor, actions_tensor)
 
-    obs, _ = env.reset(seed=seed)
-    env.action_space.seed(seed)
+    # reduce two critics to one via minimum
+    q_values = torch.min(q_values[0], q_values[1]).detach().numpy()
+    # sample actions from actor
 
-    obs, _ = env.reset()
+    sampled_actions = [ model.predict(state, deterministic=False)[0].item() for _ in range(1000)]
+   
 
-    while step < dataset_size:
-        action, _ = agent.predict(obs)
-        obs, reward, terminated, truncated, info = env.step(action)
-        step += 1
+    np.savez("pendulum_q_values.npz", 
+             actions=actions,
+             q_values=q_values,
+             sampled_actions=sampled_actions)
 
-        if terminated or truncated:
-            # Force same starting state in every ep
-            obs, _ = env.reset(seed=seed)
-    now = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    return actions, q_values, sampled_actions
 
-    dataset_id = f"pendulum/{dataset_name}"
-    algorithm_name = "expert agent"
-    author = "uncovsky"
+def plot_q_values(actions, q_values, sampled_actions):
+    fig, ax1 = plt.subplots(figsize=(10, 6))
 
-    env.create_dataset(
-        dataset_id=dataset_id,
-        algorithm_name=algorithm_name,
-        author=author,
-        description=f"Collected by trained agent on Pendulum-v1, seed {seed}.",
+    ax1.plot(actions, q_values, label='Q-values', color='blue')
+    ax1.set_xlabel('Action (Theta dot)')
+    ax1.set_ylabel('Q-value', color='blue')
+    ax1.tick_params(axis='y', labelcolor='blue')
+    ax1.grid(True)
+    ax1.set_title('Q-values with Sampled Actions Histogram')
+
+    ax2 = ax1.twinx()
+
+    counts, bins, patches = ax2.hist(
+        sampled_actions,
+        bins=30,
+        density=True,
+        alpha=0.5,
+        color='orange',
+        label='Sampled Actions',
     )
 
+    q_min, q_max = np.min(q_values), np.max(q_values)
+    scale_factor = 0.5 * (q_max - q_min) / counts.max()
+    for patch in patches:
+        patch.set_height(patch.get_height() * scale_factor)
 
-    print("Created dataset with ID:", dataset_id)
+    ax2.set_ylim(0, 0.5 * (q_max - q_min))
+    ax2.axis('off')
 
+    ax1.legend(loc='upper left')
 
-def collect_uniform_dataset(env, first_state_policy, dataset_size,
-                            dataset_name, seed=42):
-
-    """
-        Collects a minari dataset on `env` using `first_state_policy` in
-        initial state, and random actions thereafter.
-    """
-    env = DataCollector(env)
-
-    step = 0
-    obs, _ = env.reset(seed=seed)
-    env.action_space.seed(seed)
+    return fig, ax1, ax2
 
 
-    while step < dataset_size:
-        action = first_state_policy(obs)
-        obs, reward, terminated, truncated, info = env.step(action)
-        step += 1
 
-        if terminated or truncated:
-            obs, _ = env.reset(seed=seed)
+def collect_pendulum_data(env_name='Pendulum-v1', model_path='sac_expert', num_episodes=1000,
+                        seed=seed  ):
 
+    env = gym.make(env_name)
+    model = sb3.SAC.load(model_path)
 
-    now = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    collector = DataCollector(env)
 
-    dataset_id = f"pendulum/{dataset_name}"
-    algorithm_name = "Uniform"
-    author = "uncovsky"
+    for episode in tqdm.tqdm(range(num_episodes), desc="Collecting episodes"):
 
-    env.create_dataset(
-        dataset_id=dataset_id,
-        algorithm_name=algorithm_name,
-        author=author,
-        description=f"Uniformly collected dataset on Pendulum-v1, seed {seed}.",
+        # We always start from the same state to demonstrate 
+        # the erroneous extrapolation
+        obs, info = collector.reset(seed=seed)
+        done = False
+        episode_reward = 0
+
+        while not done:
+            # We sample random actions from actor though
+            action, _states = model.predict(obs, deterministic=False)
+            obs, reward, terminated, truncated, info = collector.step(action)
+            done = terminated or truncated
+            episode_reward += reward
+
+    # Create minari dataset
+    collector.create_dataset(
+            dataset_id='pendulum_expert-v0',
+            eval_env=env,
+            ref_min_score=-200,
+            ref_max_score=0,
+            algorithm_name='SAC',
+            author='uncovsky',
+            description='Pendulum expert dataset collected using SAC'
     )
-    
-    print("Created dataset with ID:", dataset_id)
 
+    env.close()
 
+if __name__ == "__main__":
+    # Train expert policy
 
-def visualize_policy_histogram(policy, env, num_samples=10000):
-    """
-    Visualizes the histogram of actions taken by a given policy in the environment.
-    """
-    actions = [policy(env.reset()[0])[0] for _ in range(num_samples)]
-    plt.hist(actions, bins=50, density=True)
-    plt.title("Action Distribution")
-    plt.xlabel("Action")
-    plt.ylabel("Density")
-    plt.grid()
+    #expert_model = train_expert_policy(save_path="sac_expert")
+    model = sb3.SAC.load("sac_expert")
+
+    # Visualize Q-values
+    env = gym.make('Pendulum-v1')
+
+    actions, q_values, sampled_actions = get_q_values(model, env, seed=seed)
+    fig, ax1, ax2 = plot_q_values(actions, q_values, sampled_actions)
     plt.show()
+
+    # Collect dataset
+    collect_pendulum_data(num_episodes=5000)
 
 
