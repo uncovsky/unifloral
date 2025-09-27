@@ -19,6 +19,7 @@ import numpy as onp
 import optax
 import tyro
 import wandb
+import tqdm
 
 
 from infra import make_pretrain_step, select_regularizer, select_ood_regularizer
@@ -143,13 +144,16 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset):
     assert args.critic_regularizer in ["none", "cql", "pbrl", "msg"]
     assert args.ensemble_regularizer in ["none", "edac", "std", "mean_vector"]
 
+    parameter_semantics = "ood actions sampled" if args.critic_regularizer in ["msg", "pbrl"] else "temperature"
+
     print(50 * "=")
     print("Training with the following settings:")
     print("PE operator: ",  "shared" if args.shared_targets else "independent")
     print("PI operator: ", args.pi_operator)
     if args.pi_operator == "lcb":
         print(f"\t with LCB penalty: {args.actor_lcb_penalty}")
-    print(f"Critic regularizer: {args.critic_regularizer}, with lagrangian: {args.critic_lagrangian}")
+    print(f"Critic regularizer: {args.critic_regularizer}, with lagrangian: {args.critic_lagrangian} and ", end="")
+    print(f"{parameter_semantics}: {args.critic_regularizer_parameter}")
     print(f"Ensemble regularizer: {args.ensemble_regularizer} with lagrangian: {args.reg_lagrangian}")
     if args.prior:
         print(f"Using prior functions of depth {args.randomized_prior_depth} and scale {args.randomized_prior_scale}")
@@ -200,6 +204,47 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset):
         alpha = jnp.exp(alpha_apply_fn(agent_state.alpha.params))
 
         """
+            Update actor
+        """
+        @partial(jax.value_and_grad, has_aux=True)
+        def _actor_loss_function(params, rng):
+            def _compute_loss(rng, transition):
+                pi = actor_apply_fn(params, transition.obs)
+                sampled_action, log_pi = pi.sample_and_log_prob(seed=rng)
+                log_pi = log_pi.sum()
+                q_values = q_apply_fn(
+                            agent_state.vec_q.params,
+                            transition.obs, sampled_action
+                            )
+
+                std_q = q_values.std(-1)
+                
+                """
+                    Evaluate PI operator
+                """
+
+                if args.pi_operator == "min":
+                    q_tgt = q_values.min(-1)
+                elif args.pi_operator == "lcb":
+                    q_tgt = q_values.mean(-1) - args.actor_lcb_penalty * std_q
+                else:
+                    raise ValueError("Invalid pi_operator")
+
+                return -q_tgt + alpha * log_pi, -log_pi, q_tgt, std_q
+
+            rng = jax.random.split(rng, args.batch_size)
+            loss, entropy, q_lcb, q_std = jax.vmap(_compute_loss)(rng, batch)
+            # compute mean q-value and mean std over actions
+            return loss.mean(), (entropy.mean(), q_lcb.mean(), q_std.mean())
+
+        rng, rng_actor = jax.random.split(rng)
+        (actor_loss, (entropy, q_lcb, q_std)), actor_grad = (
+                _actor_loss_function(agent_state.actor.params, rng_actor)
+                )
+        updated_actor = agent_state.actor.apply_gradients(grads=actor_grad)
+        agent_state = agent_state._replace(actor=updated_actor)
+
+        """
             Compute TD targets
         """
         # --- Sample actions for batch states ---
@@ -211,9 +256,8 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset):
         # --- Bootstrap actions with target nets ---
         next_q = q_apply_fn(agent_state.vec_q_target.params, 
                                batch.next_obs, bootstrap_actions)
-
         """
-            Shared vs independent targets
+            Evaluate PE operator
         """
         if args.shared_targets:
             # min over ensemble + entropy term [B, 1]
@@ -223,12 +267,12 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset):
             # Q(s,a) - args.beta_id * std + entropy term
             std_q_next = next_q.std(-1, keepdims=True)
             next_v_target = next_q - alpha * logprobs_next - args.beta_id * std_q_next
+
         td_target = jnp.expand_dims(batch.reward, -1) + args.gamma * jnp.expand_dims((1 - batch.done), -1) * next_v_target
 
         # --- Get specialized regularizer loss function with current state --- 
         rng, rng_reg, rng_reg_loss = jax.random.split(rng, 3)
         rng, rng_critic, rng_critic_loss = jax.random.split(rng, 3)
-
         ensemble_reg_loss = ensemble_regularizer_fn(agent_state, rng_reg, batch)
         critic_reg_loss = critic_regularizer_fn(agent_state, rng_critic, batch)
 
@@ -285,40 +329,6 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset):
         )
         agent_state = agent_state._replace(vec_q_target=updated_q_target)
 
-        # --- Update actor ---
-        @partial(jax.value_and_grad, has_aux=True)
-        def _actor_loss_function(params, rng):
-            def _compute_loss(rng, transition):
-                pi = actor_apply_fn(params, transition.obs)
-                sampled_action, log_pi = pi.sample_and_log_prob(seed=rng)
-                log_pi = log_pi.sum()
-                q_values = q_apply_fn(
-                            agent_state.vec_q.params,
-                            transition.obs, sampled_action
-                            )
-
-                std_q = q_values.std(-1)
-
-                if args.pi_operator == "min":
-                    q_tgt = q_values.min(-1)
-                elif args.pi_operator == "lcb":
-                    q_tgt = q_values.mean(-1) - args.actor_lcb_penalty * std_q
-                else:
-                    raise ValueError("Invalid pi_operator")
-
-                return -q_tgt + alpha * log_pi, -log_pi, q_tgt, std_q
-
-            rng = jax.random.split(rng, args.batch_size)
-            loss, entropy, q_lcb, q_std = jax.vmap(_compute_loss)(rng, batch)
-            # compute mean q-value and mean std over actions
-            return loss.mean(), (entropy.mean(), q_lcb.mean(), q_std.mean())
-
-        rng, rng_actor = jax.random.split(rng)
-        (actor_loss, (entropy, q_lcb, q_std)), actor_grad = (
-                _actor_loss_function(agent_state.actor.params, rng_actor)
-                )
-        updated_actor = agent_state.actor.apply_gradients(grads=actor_grad)
-        agent_state = agent_state._replace(actor=updated_actor)
 
         # --- Increment step ---
         agent_state = agent_state._replace(train_step=agent_state.train_step + 1)
@@ -334,7 +344,7 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset):
                     "actor_q_lcb": q_lcb,
                     "q_pred_mean" : q_pred_mean,
                     "q_pred_std": q_pred_std,
-                    }
+                }
 
         return (rng, agent_state), loss
 
@@ -424,8 +434,10 @@ def train(args):
 
     pretrain_evals = args.pretrain_updates // args.eval_interval
 
+    print("Starting pretraining...")
+
     if args.pretrain_updates > 0:
-        for eval_idx in range(pretrain_evals):
+        for eval_idx in tqdm.tqdm(range(pretrain_evals), desc="pretrain epochs"):
 
             (rng, agent_state), loss = jax.lax.scan(
                 _agent_pretrain_step_fn,
@@ -465,7 +477,9 @@ def train(args):
         Offline Training
     """
 
-    for eval_idx in range(num_evals):
+    print("Starting training")
+
+    for eval_idx in tqdm.tqdm(range(num_evals), desc="train epochs"):
         # --- Execute train loop ---
         (rng, agent_state), loss = jax.lax.scan(
             _agent_train_step_fn,

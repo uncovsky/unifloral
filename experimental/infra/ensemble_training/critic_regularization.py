@@ -7,7 +7,7 @@ import optax
 
 # JIT-compilable regularizer functions that can be used with any 
 # offline A-C algorithm.
-def  regularizer_factory(args, actor_apply_fn, q_apply_fn):
+def regularizer_factory(args, actor_apply_fn, q_apply_fn):
 
     """
         A factory for regularization functions, accepts all fixed hyperparameters and
@@ -16,13 +16,12 @@ def  regularizer_factory(args, actor_apply_fn, q_apply_fn):
 
         The loss uses args.critic_lagrangian based on the type of loss.
 
+        The factory closures over global parameters (args, forwards)
+
         Every loss follows the signature:
             loss_name(agent_state, rng, batch):
-               and return a loss that can be differentiated + traced,
-
-               the second return value is a batch-statistics dict for updating
-               the critic normalization data.
-
+               and returns a loss function that can be differentiated + traced,
+               used in the critic update step.
     """
 
     """
@@ -51,6 +50,10 @@ def  regularizer_factory(args, actor_apply_fn, q_apply_fn):
         ood_actions_next, _ = pi_next.sample_and_log_prob(seed=rng_next,
                                                           sample_shape=(args.critic_regularizer_parameter,))
 
+        # [action_num, B, action_dim] -> [B, action_num, action_dim]
+        ood_actions = jnp.swapaxes(ood_actions, 0, 1)
+        ood_actions_next = jnp.swapaxes(ood_actions_next, 0, 1)
+
         # Make a (B, num_samples, obs_dim) 
         states = jnp.expand_dims(batch.obs, axis=1).repeat(args.critic_regularizer_parameter, axis=1)
         next_states = jnp.expand_dims(batch.next_obs,axis=1).repeat(args.critic_regularizer_parameter, axis=1)
@@ -74,8 +77,8 @@ def  regularizer_factory(args, actor_apply_fn, q_apply_fn):
             ood_q_target = jnp.maximum(ood_q_target, 0.0)
             ood_q_target = jax.lax.stop_gradient(ood_q_target)
 
-            # PBRL fixes this at 0.1 for some reason
-            ood_q_target_next = q_ood_next - 0.1 * std_q_ood_next
+            # PBRL fixes this at 0.1 for some reason, but we use the lagrangian
+            ood_q_target_next = q_ood_next - args.critic_lagrangian * std_q_ood_next
             ood_q_target_next = jnp.maximum(ood_q_target_next, 0.0)
             ood_q_target_next = jax.lax.stop_gradient(ood_q_target_next)
 
