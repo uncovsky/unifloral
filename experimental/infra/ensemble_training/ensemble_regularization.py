@@ -156,7 +156,6 @@ def regularizer_factory(args, actor_apply_fn, q_apply_fn):
     }
 
     if args.ensemble_regularizer in loss_dict:
-        print(f"Using ensemble regularizer: {args.ensemble_regularizer}")
         return loss_dict[args.ensemble_regularizer]
 
     else:
