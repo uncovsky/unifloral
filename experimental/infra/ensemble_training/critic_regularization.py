@@ -34,14 +34,14 @@ def  regularizer_factory(args, actor_apply_fn, q_apply_fn):
         No-op loss, used when args.critic_regularizer is 'none'
         """
         def _noop_loss_fn(critic_params, rng, batch):
-            return jnp.array(0.0), {}
+            return jnp.array(0.0)
 
         return _noop_loss_fn
     
     def pbrl_regularizer(agent_state, rng, batch):
 
         # nondifferentiated part
-        rng, rng_curr, rng_next = jax.random.split(rng, 2)
+        rng, rng_curr, rng_next = jax.random.split(rng, 3)
 
         pi_curr = actor_apply_fn(agent_state.actor.params, batch.obs)
         pi_next = actor_apply_fn(agent_state.actor.params, batch.next_obs)
@@ -55,17 +55,16 @@ def  regularizer_factory(args, actor_apply_fn, q_apply_fn):
         states = jnp.expand_dims(batch.obs, axis=1).repeat(args.critic_regularizer_parameter, axis=1)
         next_states = jnp.expand_dims(batch.next_obs,axis=1).repeat(args.critic_regularizer_parameter, axis=1)
         
-        def _loss_fn(q_pred, critic_params, batch_statistics, rng, batch):
+        def _loss_fn(q_pred, critic_params, rng, batch):
 
             pi_curr = actor_apply_fn(agent_state.actor.params, batch.obs)
 
             # Get Q vals for ood actions
-            q_ood, new_bs = q_apply_fn(critic_params, 
-                                        batch_statistics,
-                                        states, ood_actions)
-            q_ood_next, new_bs = q_apply_fn(critic_params,
-                                        new_bs,
-                                        next_states, ood_actions_next)
+            q_ood = q_apply_fn(critic_params, 
+                               states, ood_actions)
+
+            q_ood_next = q_apply_fn(critic_params,
+                                    next_states, ood_actions_next)
 
             std_q_ood = jnp.std(q_ood, axis=1, keepdims=True)
             std_q_ood_next = jnp.std(q_ood_next, axis=1, keepdims=True)
@@ -84,7 +83,7 @@ def  regularizer_factory(args, actor_apply_fn, q_apply_fn):
             ood_loss = jnp.square(q_ood - ood_q_target).sum(axis=1).mean()
             ood_loss += jnp.square(q_ood_next - ood_q_target_next).sum(axis=1).mean()
 
-            return ood_loss, new_bs
+            return ood_loss
 
         return _loss_fn
 
@@ -97,22 +96,23 @@ def  regularizer_factory(args, actor_apply_fn, q_apply_fn):
 
         ood_actions, _ = pi_curr.sample_and_log_prob(seed=rng_curr,
                                                      sample_shape=(args.critic_regularizer_parameter,))
+
+        # [action_num, B, action_dim] -> [B, action_num, action_dim]
+        ood_actions = jnp.swapaxes(ood_actions, 0, 1)
         # Make a (B, num_samples, obs_dim) 
         states = jnp.expand_dims(batch.obs, axis=1).repeat(args.critic_regularizer_parameter, axis=1)
 
-        def _loss_fn(q_pred, critic_params, batch_statistics, rng, batch):
+        def _loss_fn(q_pred, critic_params, rng, batch):
             # Get Q vals for ood actions
-            q_ood, new_bs = q_apply_fn(critic_params, 
-                                        batch_statistics,
-                                        states, ood_actions)
+            q_ood = q_apply_fn(critic_params, 
+                               states, ood_actions)
             # [B, num_samples, E]
-            loss = q_ood - jnp.expand_dims(q_pred, axis=1)
+            loss = q_ood.mean() - q_pred.mean()
             # Sum over E, mean over B and samples
-            loss = loss.sum(axis=-1).mean()
             # Apply lagrangian here
             loss = args.critic_lagrangian * loss
 
-            return loss, new_bs
+            return loss
 
         return _loss_fn
 
@@ -120,8 +120,8 @@ def  regularizer_factory(args, actor_apply_fn, q_apply_fn):
     def cql_regularizer(agent_state, rng, batch):
         rng, rng_pi, rng_next = jax.random.split(rng, 3)
 
-        pi = actor_apply_fn(agent_state.actor.params, obs)
-        pi_next = actor_apply_fn(agent_state.actor.params, next_obs)
+        pi = actor_apply_fn(agent_state.actor.params, batch.obs)
+        pi_next = actor_apply_fn(agent_state.actor.params, batch.next_obs)
 
         pi_actions, _ = pi.sample_and_log_prob(seed=rng_pi)
         pi_next_actions, _ = pi_next.sample_and_log_prob(seed=rng_next)
@@ -134,19 +134,16 @@ def  regularizer_factory(args, actor_apply_fn, q_apply_fn):
         )
 
 
-        def _loss_fn(q_pred, critic_params, batch_statistics, rng, batch):
+        def _loss_fn(q_pred, critic_params, rng, batch):
             
-            q_pi, new_bs = q_apply_fn(critic_params,
-                                      batch_statistics,
-                                      batch.obs, pi_actions)
+            q_pi = q_apply_fn(critic_params,
+                              batch.obs, pi_actions)
 
-            q_pi_next, new_bs = q_apply_fn(critic_params,
-                                        new_bs,
-                                        batch.next_obs, pi_next_actions)
+            q_pi_next = q_apply_fn(critic_params,
+                                   batch.next_obs, pi_next_actions)
 
-            q_random, new_bs = q_apply_fn(critic_params,
-                                        new_bs,
-                                        batch.obs, cql_random_actions)
+            q_random = q_apply_fn(critic_params,
+                                  batch.obs, cql_random_actions)
 
             all_qs = jnp.stack([q_pred, q_pi, q_pi_next, q_random], axis=1)
             q_ood = jax.scipy.special.logsumexp(all_qs / args.critic_regularizer_parameter, axis=1).sum(-1)
@@ -154,7 +151,7 @@ def  regularizer_factory(args, actor_apply_fn, q_apply_fn):
 
             min_q_loss = (q_ood.mean() - q_pred.mean()) * args.critic_lagrangian
 
-            return min_q_loss, new_bs
+            return min_q_loss
 
         return _loss_fn
 
