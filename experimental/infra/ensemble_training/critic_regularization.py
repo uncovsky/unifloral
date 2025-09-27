@@ -32,7 +32,7 @@ def regularizer_factory(args, actor_apply_fn, q_apply_fn):
         """
         No-op loss, used when args.critic_regularizer is 'none'
         """
-        def _noop_loss_fn(critic_params, rng, batch):
+        def _noop_loss_fn(q_pred, critic_params, rng, batch):
             return jnp.array(0.0)
 
         return _noop_loss_fn
