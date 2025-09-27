@@ -155,6 +155,8 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset):
     print(f"Critic regularizer: {args.critic_regularizer}, with lagrangian: {args.critic_lagrangian} and ", end="")
     print(f"{parameter_semantics}: {args.critic_regularizer_parameter}")
     print(f"Ensemble regularizer: {args.ensemble_regularizer} with lagrangian: {args.reg_lagrangian}")
+    if args.critic_norm != "none":
+        print(f"Using {args.critic_norm} normalization for critics")
     if args.prior:
         print(f"Using prior functions of depth {args.randomized_prior_depth} and scale {args.randomized_prior_scale}")
     if args.pretrain_updates > 0:
@@ -467,10 +469,6 @@ def train(args):
                 }
                 wandb.log(log_dict)
 
-    if args.checkpoint:
-        ckpt_dir = create_checkpoint_dir()
-        save_train_state(agent_state, ckpt_dir, pretrain_evals)
-
     num_evals = (args.num_updates - args.pretrain_updates) // args.eval_interval
 
     """
@@ -506,7 +504,9 @@ def train(args):
             }
             wandb.log(log_dict)
 
+    # Save final checkpoint for evaluation
     if args.checkpoint:
+        ckpt_dir = create_checkpoint_dir()
         save_train_state(agent_state, ckpt_dir, num_evals + pretrain_evals)
 
     # --- Evaluate final agent ---
