@@ -148,6 +148,7 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset):
 
     print(50 * "=")
     print("Training with the following settings:")
+    print("Ensemble size: ", args.num_critics)
     print("PE operator: ",  "shared" if args.shared_targets else "independent")
     print("PI operator: ", args.pi_operator)
     if args.pi_operator == "lcb":

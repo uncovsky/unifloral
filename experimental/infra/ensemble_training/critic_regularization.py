@@ -66,11 +66,12 @@ def regularizer_factory(args, actor_apply_fn, q_apply_fn):
             q_ood = q_apply_fn(critic_params, 
                                states, ood_actions)
 
+            # shape [B, num_samples, E]
             q_ood_next = q_apply_fn(critic_params,
                                     next_states, ood_actions_next)
 
-            std_q_ood = jnp.std(q_ood, axis=1, keepdims=True)
-            std_q_ood_next = jnp.std(q_ood_next, axis=1, keepdims=True)
+            std_q_ood = jnp.std(q_ood, axis=-1, keepdims=True)
+            std_q_ood_next = jnp.std(q_ood_next, axis=-1, keepdims=True)
 
             # Q - beta_ood * std + clip
             ood_q_target = q_ood - args.critic_lagrangian * std_q_ood
@@ -83,8 +84,8 @@ def regularizer_factory(args, actor_apply_fn, q_apply_fn):
             ood_q_target_next = jax.lax.stop_gradient(ood_q_target_next)
 
             # Sum over ensemble, mean over batch and samples
-            ood_loss = jnp.square(q_ood - ood_q_target).sum(axis=1).mean()
-            ood_loss += jnp.square(q_ood_next - ood_q_target_next).sum(axis=1).mean()
+            ood_loss = jnp.square(q_ood - ood_q_target).sum(axis=-1).mean()
+            ood_loss += jnp.square(q_ood_next - ood_q_target_next).sum(axis=-1).mean()
 
             return ood_loss
 
@@ -102,7 +103,6 @@ def regularizer_factory(args, actor_apply_fn, q_apply_fn):
 
         # [action_num, B, action_dim] -> [B, action_num, action_dim]
         ood_actions = jnp.swapaxes(ood_actions, 0, 1)
-        # Make a (B, num_samples, obs_dim) 
         states = jnp.expand_dims(batch.obs, axis=1).repeat(args.critic_regularizer_parameter, axis=1)
 
         def _loss_fn(q_pred, critic_params, rng, batch):
@@ -111,7 +111,7 @@ def regularizer_factory(args, actor_apply_fn, q_apply_fn):
                                states, ood_actions)
             # [B, num_samples, E]
             loss = q_ood.mean() - q_pred.mean()
-            # Sum over E, mean over B and samples
+
             # Apply lagrangian here
             loss = args.critic_lagrangian * loss
 
