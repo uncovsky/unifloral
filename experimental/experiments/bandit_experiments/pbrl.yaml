@@ -4,14 +4,14 @@ command:
   - ${args_no_boolean_flags}
 entity: ahoj
 method: grid
-name: UNIFIED
+name: PBRL
 program: algorithms/unified.py
 project: bandit-sweep
 
 parameters:
   # --- Experiment ---
   seed:
-    values: [0]
+    values: [0, 1]
   dataset-source:
     value: minari
   dataset-name:
@@ -52,10 +52,10 @@ parameters:
     value: 0.005
   # --- SAC-N ---
   num_critics:
-    value: 2
+    value: 10
   # --- CQL ---
   actor_lr:
-    value: 3e-4
+    value: 0.0
   pi_operator:
     value: min
   shared_targets:
@@ -63,10 +63,6 @@ parameters:
   # pbrl beta_id weight
   beta_id:
     value: 0.01
-
-  num_critics:
-    value: 10
-
   ensemble_regularizer:
     value: "none"
   
@@ -74,14 +70,14 @@ parameters:
     value: "pbrl"
   # ood actions
   critic_regularizer_parameter:
-    value: 2
+    value: 10
 
   critic_norm:
     values: ["none", "layer"]
   # pbrl beta_ood weight
   critic_lagrangian: 
     values:
-      - 2.0
+      - 0.1
   # --- misc ---
   prior:
     value: false

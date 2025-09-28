@@ -4,7 +4,7 @@ command:
   - ${args_no_boolean_flags}
 entity: ahoj
 method: grid
-name: UNIFIED
+name: MSG
 program: algorithms/unified.py
 project: bandit-sweep
 
@@ -55,7 +55,7 @@ parameters:
     value: 10
   # --- CQL ---
   actor_lr:
-    value: 3e-4
+    value: 0.0
   pi_operator:
     value: lcb
   actor_lcb_penalty:
@@ -75,7 +75,7 @@ parameters:
 
   # ood actions
   critic_regularizer_parameter:
-    value: 2
+    value: 1
 
   critic_norm:
     values: ["none", "layer"]

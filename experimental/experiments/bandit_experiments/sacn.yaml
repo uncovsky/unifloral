@@ -55,7 +55,7 @@ parameters:
     value: 10
   # --- CQL ---
   actor_lr:
-    value: 3e-4
+    value: 0.0
   pi_operator:
     value: min
   shared_targets:

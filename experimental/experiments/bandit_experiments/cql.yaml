@@ -4,7 +4,7 @@ command:
   - ${args_no_boolean_flags}
 entity: ahoj
 method: grid
-name: UNIFIED
+name: CQL
 program: algorithms/unified.py
 project: bandit-sweep
 
@@ -52,10 +52,10 @@ parameters:
     value: 0.005
   # --- SAC-N ---
   num_critics:
-    value: 2
+    value: 10
   # --- CQL ---
   actor_lr:
-    value: 3e-4
+    value: 0.0 # Only policy eval
   pi_operator:
     value: min
   shared_targets:
