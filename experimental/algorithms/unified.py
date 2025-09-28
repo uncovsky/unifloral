@@ -131,25 +131,16 @@ def create_train_state(args, rng, network, dummy_input, lr=None):
         )
 
 
-def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset):
+def print_args(args):
     """
-    Make JIT-compatible agent train step.
-
-        Setup scheduling and regularizer fns.
-
-        Ensemble regularizer (diversity)
-            If set to "none", ensemble regularizer fn will be a no-op.
+        Prints out the training settings in human-friendly format.
     """
-
-    assert args.critic_regularizer in ["none", "cql", "pbrl", "msg"]
-    assert args.ensemble_regularizer in ["none", "edac", "std", "mean_vector"]
-
     parameter_semantics = "ood actions sampled" if args.critic_regularizer in ["msg", "pbrl"] else "temperature"
-
     print(50 * "=")
     print("Training with the following settings:")
+    print("Dataset: ", args.dataset_name, " from ", args.dataset_source)
     print("Ensemble size: ", args.num_critics)
-    print("PE operator: ",  "shared" if args.shared_targets else "independent")
+    print("PE operator: ",  "shared" if args.shared_targets else f"independent with {args.beta_id} std penalty")
     print("PI operator: ", args.pi_operator)
     if args.pi_operator == "lcb":
         print(f"\t with LCB penalty: {args.actor_lcb_penalty}")
@@ -164,6 +155,19 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset):
         print(f"Pretraining for {args.pretrain_updates} updates with {args.pretrain_loss} loss and lagrangian {args.pretrain_lagrangian}")
     print(50 * "=")
 
+def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset):
+    """
+    Make JIT-compatible agent train step.
+
+    """
+    print_args(args)
+
+    """
+        Get regularizers for ensemble diversity and OOD critic values.
+    """
+    assert args.critic_regularizer in ["none", "cql", "pbrl", "msg"]
+    assert args.ensemble_regularizer in ["none", "edac", "std", "mean_vector"]
+    assert args.pi_operator in ["min", "lcb"]
 
     ensemble_regularizer_fn = select_regularizer(args, actor_apply_fn, q_apply_fn)
     critic_regularizer_fn = select_ood_regularizer(args, actor_apply_fn, q_apply_fn)
@@ -182,7 +186,7 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset):
         batch = jax.tree_util.tree_map(lambda x: x[batch_indices], dataset)
 
         """
-            Update alpha (Entropy temperature)
+            Alpha loss (Entropy temperature)
         """
         @jax.value_and_grad
         def _alpha_loss_fn(params, rng):
@@ -201,13 +205,14 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset):
         alpha_loss, alpha_grad = _alpha_loss_fn(
                 agent_state.alpha.params, rng_alpha
         )
-
+        """
+            Update alpha
+        """
         updated_alpha = agent_state.alpha.apply_gradients(grads=alpha_grad)
         agent_state = agent_state._replace(alpha=updated_alpha)
         alpha = jnp.exp(alpha_apply_fn(agent_state.alpha.params))
-
         """
-            Update actor
+            Actor loss (Policy Improvement)
         """
         @partial(jax.value_and_grad, has_aux=True)
         def _actor_loss_function(params, rng):
@@ -215,33 +220,33 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset):
                 pi = actor_apply_fn(params, transition.obs)
                 sampled_action, log_pi = pi.sample_and_log_prob(seed=rng)
                 log_pi = log_pi.sum()
+
                 q_values = q_apply_fn(
                             agent_state.vec_q.params,
                             transition.obs, sampled_action
-                            )
-
+                           )
                 std_q = q_values.std(-1)
-                
+
                 """
                     Evaluate PI operator
                 """
-
                 if args.pi_operator == "min":
                     q_tgt = q_values.min(-1)
-                elif args.pi_operator == "lcb":
-                    q_tgt = q_values.mean(-1) - args.actor_lcb_penalty * std_q
                 else:
-                    raise ValueError("Invalid pi_operator")
+                    # lcb
+                    q_tgt = q_values.mean(-1) - args.actor_lcb_penalty * std_q
 
                 return -q_tgt + alpha * log_pi, -log_pi, q_tgt, std_q
 
             rng = jax.random.split(rng, args.batch_size)
-            loss, entropy, q_lcb, q_std = jax.vmap(_compute_loss)(rng, batch)
-            # compute mean q-value and mean std over actions
-            return loss.mean(), (entropy.mean(), q_lcb.mean(), q_std.mean())
+            loss, entropy, q_target, q_std = jax.vmap(_compute_loss)(rng, batch)
+            return loss.mean(), (entropy.mean(), q_target.mean(), q_target.std())
 
+        """
+            Update actor
+        """
         rng, rng_actor = jax.random.split(rng)
-        (actor_loss, (entropy, q_lcb, q_std)), actor_grad = (
+        (actor_loss, (entropy, q_mean, q_std)), actor_grad = (
                 _actor_loss_function(agent_state.actor.params, rng_actor)
                 )
         updated_actor = agent_state.actor.apply_gradients(grads=actor_grad)
@@ -250,7 +255,6 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset):
         """
             Compute TD targets
         """
-        # --- Sample actions for batch states ---
         rng_next, rng = jax.random.split(rng, 2)
         next_pis = actor_apply_fn(agent_state.actor.params, batch.next_obs)
         bootstrap_actions, logprobs_next = next_pis.sample_and_log_prob(seed=rng_next)
@@ -258,24 +262,34 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset):
 
         # --- Bootstrap actions with target nets ---
         next_q = q_apply_fn(agent_state.vec_q_target.params, 
-                               batch.next_obs, bootstrap_actions)
+                            batch.next_obs, 
+                            bootstrap_actions)
         """
             Evaluate PE operator
+
+            construct bootstrap for each critic Q_i
         """
         if args.shared_targets:
-            # min over ensemble + entropy term [B, 1]
+            # [B, E] -> [B, 1] target, later broadcast to [B,E] predictions
             next_v_target = next_q.min(-1, keepdims=True) - alpha * logprobs_next
 
         else:
-            # Q(s,a) - args.beta_id * std + entropy term
+            # [B,E] target Q_i'(s',a') - alpha * log pi(a'|s') - beta_id * std_i(Q_J(s',a'))
             std_q_next = next_q.std(-1, keepdims=True)
             next_v_target = next_q - alpha * logprobs_next - args.beta_id * std_q_next
 
+
+        """
+            Construct TD target
+                y_ij for every critic Q_i and experience j
+        """
         td_target = jnp.expand_dims(batch.reward, -1) + args.gamma * jnp.expand_dims((1 - batch.done), -1) * next_v_target
 
         # --- Get specialized regularizer loss function with current state --- 
         rng, rng_reg, rng_reg_loss = jax.random.split(rng, 3)
         rng, rng_critic, rng_critic_loss = jax.random.split(rng, 3)
+
+        # --- Construct closures around regularizer functions that sample actions, etc. ---
         ensemble_reg_loss = ensemble_regularizer_fn(agent_state, rng_reg, batch)
         critic_reg_loss = critic_regularizer_fn(agent_state, rng_critic, batch)
 
@@ -285,43 +299,56 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset):
         @partial(jax.value_and_grad, has_aux=True)
         def _q_loss_fn(params):
 
-            # [B, ensemble_size]
             q_pred= q_apply_fn(params, 
                                batch.obs, batch.action)
 
-            # Bellman error
+            
             critic_loss = jnp.square((q_pred - td_target))
-            # Take mean over batch and sum over ensembles
+
+            """
+                TD error
+
+                L(Q_ij) = (Q_ij - y_ij)^2
+            """
             critic_loss = critic_loss.sum(-1).mean()
 
             """
                 Ensemble regularizer
+
+                L(Q_ij) += lambda_reg * R(E)
+                where E = {Q_1, ..., Q_N} is the ensemble of critics
             """
             regularizer_loss = ensemble_reg_loss(params, rng_reg_loss, batch)
 
             """
                 Critic regularizer 
-                - lagrangian is included inside critic_regularizer_fn closure
+
+                L(Q_ij) += R_ood(Q_i, lambda_ood)
             """
-            critic_regularizer_loss = critic_reg_loss(q_pred, params, rng_critic_loss, batch)
+            critic_regularizer_loss, logs = critic_reg_loss(q_pred, params, rng_critic_loss, batch)
 
             critic_loss += args.reg_lagrangian * regularizer_loss
             critic_loss += critic_regularizer_loss
 
-            return critic_loss, (regularizer_loss,
+            return critic_loss, (logs,
+                                 regularizer_loss,
                                  critic_regularizer_loss, 
                                  q_pred.mean(),
                                  q_pred.std() )
 
-        (critic_loss, (regularizer_loss, critic_regularizer_loss, q_pred_mean,
+        (critic_loss, (logs, regularizer_loss, critic_regularizer_loss, q_pred_mean,
                        q_pred_std)), critic_grad = _q_loss_fn(agent_state.vec_q.params)
 
 
-        # --- Update Q-state
+        """
+            Update critic ensemble
+        """
         updated_q = agent_state.vec_q.apply_gradients(grads=critic_grad)
         agent_state = agent_state._replace(vec_q=updated_q)
 
-        # --- Update Q target network ---
+        """
+            Update target nets (polyak)
+        """
         updated_q_target_params = optax.incremental_update(
                 agent_state.vec_q.params,
                 agent_state.vec_q_target.params,
@@ -331,7 +358,6 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset):
                 params=updated_q_target_params,
         )
         agent_state = agent_state._replace(vec_q_target=updated_q_target)
-
 
         # --- Increment step ---
         agent_state = agent_state._replace(train_step=agent_state.train_step + 1)
@@ -344,10 +370,15 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset):
                     "critic_regularizer_loss": critic_regularizer_loss,
                     "entropy": entropy,
                     "alpha": alpha,
-                    "actor_q_lcb": q_lcb,
+                    "actor_q_mean": q_mean,
+                    "actor_q_std": q_std,
                     "q_pred_mean" : q_pred_mean,
                     "q_pred_std": q_pred_std,
                 }
+
+        # Add logs from critic regularizer loss
+        for k, v in logs.items():
+            loss[k] = v
 
         return (rng, agent_state), loss
 
