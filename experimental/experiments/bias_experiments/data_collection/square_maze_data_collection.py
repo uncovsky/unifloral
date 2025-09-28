@@ -47,6 +47,7 @@ def collect_dataset(H, noise_eps,
 
     # get step size
     step_size = env.unwrapped.step_size
+    failed_trajs_count = 0
 
     for ep in range(episodes):
 
@@ -61,12 +62,16 @@ def collect_dataset(H, noise_eps,
             obs = next_obs
             done = terminated or truncated
 
+        if done and reward < 1.0:
+            failed_trajs_count += 1
+
 
     env.unwrapped.plot_trajectories()
 
     noise_eps = int(noise_eps*10)
 
     dataset_id = f"square-reach/horizon-{H}-eps{noise_eps}-v0"
+    print("Failed trajs:", failed_trajs_count, "out of", episodes)
 
     collecting_env.create_dataset(
         dataset_id=dataset_id,

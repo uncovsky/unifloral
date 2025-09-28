@@ -50,6 +50,3 @@ def collect_bandit_data(episodes=1000, seed=0):
             author='uncovsky',
             description='Pendulum expert dataset collected using SAC'
     )
-
-
-j
