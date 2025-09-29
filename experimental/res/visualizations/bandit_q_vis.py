@@ -1,4 +1,4 @@
-import numpy as np 
+import numpy as np
 import jax
 import gymnasium as gym
 import jax.numpy as jnp
@@ -85,41 +85,68 @@ def get_q_vals_vis(ckpt_dir='./bandit_checkpoints'):
             checkpoint = checkpoints.restore_checkpoint(abs_path, target=None)
 
             algo = args['algorithm']
-            critic_lag = args['critic_lagrangian']
             num_critics = args['num_critics']
-            ens_lab = args['reg_lagrangian']
+            critic_norm = args['critic_norm']
+            ens_lab = args.get('reg_lagrangian', 0.0)
+            critic_lag = args.get('critic_lagrangian', 0.0)
 
             state_dim = 1
             action_dim = 1
 
         
-            actions = np.linspace(-1, 1, 1000)
+            actions = np.linspace(-1, 1, 1000).reshape(-1, 1)
             q_values = []
             expert_q_values = [ 1 if abs(a) >= 0.5 else -1 for a in actions]
 
+            expert_q_values = jnp.array(expert_q_values, dtype=jnp.float32)
+
+
             state_tensor = jnp.ones((1000, state_dim), dtype=jnp.float32)
-            actions_tensor = jnp.array(actions, dtype=jnp.float32).reshape(-1, 1)
+            actions_tensor = jnp.array(actions, dtype=jnp.float32)
 
-            vec_q_params = checkpoint['vec_q']['params']
-            model = VectorQ(num_critics=num_critics, critic_norm='none')
+            model = VectorQ(num_critics=num_critics, critic_norm=critic_norm)
+            if 'batch_stats' in checkpoint['vec_q']:
+                vec_q_params = checkpoint['vec_q']
+                q_values = model.apply({'params': vec_q_params['params'],
+                                        'batch_stats': {}}, 
+                                       state_tensor, actions_tensor, train=False, mutable=False)
+            else:
+                vec_q_params = checkpoint['vec_q']['params']
+                q_values = model.apply(vec_q_params, state_tensor, actions_tensor)
 
-            q_values = model.apply(vec_q_params, state_tensor, actions_tensor)
-            print(q_values)
+
+
+
+            # get bias of q-values vs expert q-values
+            positive_expert = expert_q_values >= 0
+            negative_expert = expert_q_values < 0
+
+            bias_pos = jnp.mean(q_values[positive_expert], axis=1) - expert_q_values[positive_expert]
+            bias_neg = jnp.mean(q_values[negative_expert], axis=1) - expert_q_values[negative_expert]
+
+            print(f'For {checkpoint_folder} with norm {critic_norm}, bias pos: {bias_pos.mean()}, bias neg: {bias_neg.mean()}')
 
             plt.plot(actions, expert_q_values, label='expert', color='black',
                      linestyle='dashed')
             for i in range(num_critics):
                 plt.plot(actions, q_values[:, i], label=f'critic {i}')
             plt.xlabel('action')
-            plt.title(f'Ensemble Q values {algo}, lag_c = {critic_lag}, lag_e = {ens_lab}')
+            title = "{algo}_critics_{num_critics}_lagc_{critic_lag}_lage_{ens_lab}_norm_{critic_norm}".format(algo=algo, 
+                                                                                                              num_critics=num_critics, 
+                                                                                                              critic_lag=critic_lag, 
+                                                                                                              ens_lab=ens_lab, 
+                                                                                                              critic_norm=critic_norm)
+            plt.title(f'Ensemble Q values {algo}, lag_c = {critic_lag}, lag_e = {ens_lab}, norm = {critic_norm}')
             # yaxis limit for better visualization
             plt.ylabel('Q value')
             plt.legend()
-            #plt.savefig(f'{title}_q_vals.png')
+            # plt.savefig(f'{title}_q_vals.png')
             plt.show()
+            plt.clf()
 
 
 
     
 
-get_q_vals_vis()
+#get_q_vals_vis("./bandit_checkpoints/new")
+get_q_vals_vis("./bandit_checkpoints/bandit_pbrl")

@@ -299,10 +299,7 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset):
         @partial(jax.value_and_grad, has_aux=True)
         def _q_loss_fn(params):
 
-            q_pred= q_apply_fn(params, 
-                               batch.obs, batch.action)
-
-            
+            q_pred = q_apply_fn(params, batch.obs, batch.action)
             critic_loss = jnp.square((q_pred - td_target))
 
             """
