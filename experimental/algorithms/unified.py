@@ -37,29 +37,6 @@ from infra.models.critic import VectorQ, PriorVectorQ
 
 os.environ["XLA_FLAGS"] = "--xla_gpu_triton_gemm_any=True"
 
-"""
-    Checkpointing
-"""
-
-def create_checkpoint_dir():
-    time_str = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-    dir_name = f"{args.algorithm}_{args.dataset_name.replace('/', '.')}/{time_str}"
-    ckpt_dir = os.path.join(args.checkpoint_dir, dir_name)
-    ckpt_dir = os.path.abspath(ckpt_dir)
-    os.makedirs(ckpt_dir, exist_ok=True)
-
-    # Save args to JSON inside the checkpoint dir
-    args_path = os.path.join(ckpt_dir, "args.json")
-    with open(args_path, "w") as f:
-        json.dump(asdict(args), f, indent=2)
-
-    return ckpt_dir
-
-def save_train_state(train_state, ckpt_dir, step):
-    checkpoints.save_checkpoint(ckpt_dir, target=train_state, step=step,
-                                overwrite=False, keep=2)
-    print(f"Checkpoint saved at step {step} in {ckpt_dir}")
-
 
 @dataclass
 class Args:
@@ -67,13 +44,13 @@ class Args:
     seed: int = 0
     dataset_source : str = "d4rl"
     dataset_name: str = "halfcheetah-medium-v2"
-    algorithm: str = "pbrl"
+    algorithm: str = "unified"
     num_updates: int = 1_000_000
     eval_interval: int = 2500
     eval_workers: int = 8
     eval_final_episodes: int = 1000
     checkpoint : bool = False
-    checkpoint_dir: str = "./checkpoints"
+    checkpoint_dir: str = "./data"
     # --- Logging ---
     log: bool = False
     wandb_project: str = "unifloral"
@@ -150,6 +127,47 @@ def print_args(args):
         print(f"Pretraining for {args.pretrain_updates} updates with {args.pretrain_loss} loss and lagrangian {args.pretrain_lagrangian}")
     print(50 * "=")
 
+
+def get_experiment_dirname(args):
+    """
+        Maps args to a directory name which will be used to store 
+        checkpoints and final returns.
+
+        we will save the data in 
+            checkpoint_dir/{experiment_dir}/checkpoints
+            ,and 
+            checkpoint_dir/{experiment_dir}/final_returns respectively.
+
+    """
+
+    name = f"{args.algorithm}_{args.dataset_name}"
+    filtered_name = name.replace("/", "_").replace(".", "_")
+    time = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    filtered_name = f"{filtered_name}/{time}"
+    filtered_name = f"{args.checkpoint_dir}/{filtered_name}"
+
+    return filtered_name
+
+
+"""
+    Checkpointing
+"""
+
+def create_checkpoint_dir(exp_dir):
+    ckpt_dir = exp_dir + "/checkpoints"
+    ckpt_dir = os.path.abspath(ckpt_dir)
+    os.makedirs(ckpt_dir, exist_ok=True)
+    return ckpt_dir
+
+def save_train_state(train_state, ckpt_dir, step):
+    checkpoints.save_checkpoint(ckpt_dir, target=train_state, step=step,
+                                overwrite=False, keep=2)
+    print(f"Checkpoint saved at step {step} in {ckpt_dir}")
+
+
+"""
+    Training state and training step
+"""
 
 AgentTrainState = namedtuple("AgentTrainState", "actor vec_q vec_q_target alpha pretrain_lag train_step")
 Transition = namedtuple("Transition", "obs action reward next_obs next_action done")
@@ -423,6 +441,16 @@ def train(args):
 
     rng = jax.random.PRNGKey(args.seed)
 
+    # Get timestamped directory
+    exp_dir = get_experiment_dirname(args)
+    # Save args to JSON inside the main dir
+    os.makedirs(exp_dir, exist_ok=True)
+    args_path = os.path.join(exp_dir, "args.json")
+    with open(args_path, "w") as f:
+        json.dump(asdict(args), f, indent=2)
+
+    print("Saving experiment data to ", exp_dir)
+
     """
         Setup OOD dataset if diversity logs are enabled
     """
@@ -600,7 +628,7 @@ def train(args):
 
     # Save final checkpoint for evaluation
     if args.checkpoint:
-        ckpt_dir = create_checkpoint_dir()
+        ckpt_dir = create_checkpoint_dir(exp_dir)
         save_train_state(agent_state, ckpt_dir, num_evals + pretrain_evals)
 
     # --- Evaluate final agent ---
@@ -616,15 +644,11 @@ def train(args):
         info = agg_fn(rets, "final_returns") | agg_fn(scores, "final_scores")
 
         # --- Write final returns to file ---
-        os.makedirs(f"final_returns/{args.algorithm}/", exist_ok=True)
-        time_str = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-
-        filtered_name = args.dataset_name.replace("/", "_").replace("-", "_")
-
-        filename = f"{args.algorithm}_{filtered_name}_{time_str}.npz"
-        with open(os.path.join("final_returns", filename), "wb") as f:
+        final_returns_dir = f"{exp_dir}/final_returns/"
+        os.makedirs(final_returns_dir, exist_ok=True)
+        filename = "returns.npz"
+        with open(os.path.join(final_returns_dir, filename), "wb") as f:
             onp.savez_compressed(f, **info, args=asdict(args))
-
         if args.log:
             wandb.save(os.path.join("final_returns", filename))
 
