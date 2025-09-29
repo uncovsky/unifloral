@@ -7,6 +7,8 @@ import time
 import yaml
 import wandb
 
+from helper_scripts.experiment_utils import sweep_folder
+
 # prevent jax from prealloc mem
 os.environ["XLA_PYTHON_CLIENT_PREALLOCATE"] = "false"
 
@@ -202,8 +204,7 @@ if __name__ == "__main__":
 
 
     args = parser.parse_args()
-    config_path = os.path.join(folder, args.experiment)
-    run_experiment(args.entity, args.project, config_path, args.prior)
+    run_experiment(args.entity, args.project, args.experiment)
 
 
 

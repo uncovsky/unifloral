@@ -78,7 +78,7 @@ class Args:
     # --- SAC-N ---
     num_critics: int = 10
     # --- PBRL --- 
-    critic_norm: str = "spectral" # \in {"spectral", "layer", "none"}
+    critic_norm: str = "none" # \in {"spectral", "layer", "none"}
     actor_lr: float = 1e-4
     beta_id : float = 0.01
     beta_ood_start: float = 5.0

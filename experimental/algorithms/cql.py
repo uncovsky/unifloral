@@ -377,15 +377,13 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset):
             rand_q = q_apply_fn(params, batch.obs, cql_random_actions) #[B, N]
             pi_q = q_apply_fn(params, batch.obs, pi_actions) #[B, N]
             next_pi_q = q_apply_fn(params, batch.obs, pi_next_actions)
-            all_qs = jnp.concatenate([rand_q, pi_q, next_pi_q, q_pred], axis=1)
 
-            # Logsumexp over batch dimension [B, N] -> [N], 
-            # sum over ensemble members [N] -> []
-            q_ood = jax.scipy.special.logsumexp(all_qs / args.cql_temperature, axis=0).sum()
-            q_ood = q_ood * args.cql_temperature * args.cql_min_q_weight
+            all_qs = jnp.stack([rand_q, pi_q, next_pi_q, q_pred], axis=1)
 
-            # loss for each member is alpha*(q_ood - q_pred.mean())
-            min_q_loss = q_ood - q_pred.mean() * args.cql_min_q_weight 
+            q_ood = jax.scipy.special.logsumexp(all_qs / args.cql_temperature, axis=1).sum(-1)
+            q_ood = q_ood * args.cql_temperature
+            min_q_loss = (q_ood.mean() - q_pred.mean()) * args.cql_min_q_weight 
+
             critic_loss += min_q_loss
             return critic_loss
 
