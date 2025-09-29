@@ -97,13 +97,14 @@ def wandb_sweep_from_config(config,
     # blocks until agent terminates
 
 
-def sweep_folder(dirname, entity, project):
+def sweep_folder(dirname, entity, project, run_limit=None):
     # Run all sweeps in the specified directory (blocking)
     configs = load_configs(dirname)
     for config in configs:
         wandb_sweep_from_config(
             config,
             project=project,
-            entity=entity
+            entity=entity,
+            run_limit=run_limit
         )
 

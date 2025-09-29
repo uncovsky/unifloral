@@ -1,0 +1,99 @@
+command:
+  - python3
+  - ${program}
+  - ${args_no_boolean_flags}
+entity: ahoj
+method: grid
+name: diversity_prior_edac
+program: algorithms/unified.py
+project: diversity_prior_edac
+
+parameters:
+  # --- Experiment ---
+  seed:
+    values: [0, 1, 2]
+  dataset-source:
+    value: d4rl
+  dataset-name:
+    value: walker2d-medium-v2
+  algorithm:
+    value: independent_targets
+  num_updates:
+    value : 100_000
+  eval_interval:
+    value: 10_000
+  eval_workers:
+    value: 8
+  eval_final_episodes:
+    value: 0 # don't do eval here
+
+  checkpoint:
+    value: True
+  checkpoint_dir:
+    value: "./checkpoints/diversity_prior_edac"
+
+  # --- Logging ---
+  diversity_logs: # log diversity metrics
+    value: true
+  wandb_project:
+    value: diversity_targets
+  wandb_team:
+    value: ahoj
+  wandb_group:
+    value: debug
+
+  # --- Generic optimization ---
+  lr:
+    value: 3e-4
+  actor_lr:
+    value: 3e-4
+  batch_size:
+    value: 256
+  gamma:
+    value: 0.99
+  polyak_step_size:
+    value: 0.005
+
+  # --- SAC-N ---
+  num_critics:
+    value: 10
+
+  # try both PI operators (min and lcb(2))
+  pi_operator:
+    value: min
+
+  shared_targets: # Try both shared and independent bootstrap targets
+    value: True
+
+  # do not penalize indep targets
+  beta_id:
+    value: 0.0
+
+  critic_regularization:
+    value: "none" 
+
+  ensemble_regularizer:
+    values:
+      - none
+      - edac
+
+  # smal enough value
+  reg_lagrangian:
+    value:
+      - 0.1
+
+  # --- no pretraining
+  pretrain_updates:
+    value: 0
+
+  # --- use RFP
+  prior:
+    values:
+      - True
+      - False
+
+  randomized_prior_scale:
+    values:
+      - 5.0
+      - 10.0
+

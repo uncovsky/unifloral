@@ -2,6 +2,13 @@ import numpy as np
 import gymnasium as gym
 import mock_environments
 from minari import DataCollector
+import tqdm
+
+"""
+    Data collection for the coninuous Bandit benchmark.
+
+        see mock_environments/continuous_bandit.py
+"""
 
 def mixed_expert_policy(_):
     """
@@ -13,8 +20,6 @@ def mixed_expert_policy(_):
 
             we play mixed optimal actions
     """
-
-
     if np.random.rand() < 0.5:
         return np.random.uniform(-1, -0.5, size=(1,)).astype(np.float32)
     else:
@@ -29,7 +34,7 @@ def collect_bandit_data(episodes=1000, seed=0):
 
     obs, _ = collector.reset(seed=seed)
 
-    for ep in range(episodes):
+    for ep in tqdm.tqdm(range(episodes), desc="Collecting Bandit expert data"):
         done = False
 
         while not done:

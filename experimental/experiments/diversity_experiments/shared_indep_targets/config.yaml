@@ -4,9 +4,9 @@ command:
   - ${args_no_boolean_flags}
 entity: ahoj
 method: grid
-name: independent_targets
-program: algorithms/diversity/independent_targets.py
-project: diverse-independent-targets
+name: independent_targets_diversity
+program: algorithms/unified.py
+project: targets
 
 parameters:
   # --- Experiment ---
@@ -19,19 +19,24 @@ parameters:
   algorithm:
     value: independent_targets
   num_updates:
-    value : 500_000
+    value : 100_000
   eval_interval:
     value: 10_000
   eval_workers:
     value: 8
   eval_final_episodes:
-    value: 100
+    value: 0 # don't do eval here
+
+  checkpoint:
+    value: True
+  checkpoint_dir:
+    value: "./checkpoints/diversity_targets"
 
   # --- Logging ---
-  log:
+  diversity_logs: # log diversity metrics
     value: true
   wandb_project:
-    value: diverse-msg
+    value: diversity_targets
   wandb_team:
     value: ahoj
   wandb_group:
@@ -39,6 +44,8 @@ parameters:
 
   # --- Generic optimization ---
   lr:
+    value: 3e-4
+  actor_lr:
     value: 3e-4
   batch_size:
     value: 256
@@ -49,20 +56,35 @@ parameters:
 
   # --- SAC-N ---
   num_critics:
-    values: [10, 30]
+    value: 10
 
-  # --- MSG ---
-  cql_min_q_weight: 
-    values:
-      - 4.0
-  actor_lcb_coef : 
-    values : [4.0]
-
+  # try both PI operators (min and lcb(2))
   pi_operator:
     values:
-      - lcb
       - min
+      - lcb
 
+  shared_targets: # Try both shared and independent bootstrap targets
+    values:
+      - False
+      - True
+
+  # do not penalize indep targets
+  beta_id:
+    value: 0.0
+
+  critic_regularization:
+    value: "pbrl" # use same reg for same scale of Q-values
+  critic_lagrangian:
+    value: 1.0
+
+  ensemble_regularizer:
+    value: "none"
+
+  actor_lcb_penalty:
+    value: 2.0
+
+  # no extra fancy stuff
   # --- pretraining
   pretrain_updates:
     value: 0

@@ -5,34 +5,40 @@ command:
 entity: ahoj
 method: grid
 name: independent_targets
-program: algorithms/diversity/independent_targets.py
-project: diverse-independent-targets
+program: algorithms/unified.py
+project: diversity-ood-stability
 
 parameters:
   # --- Experiment ---
   seed:
-    #values: [0, 1, 2]
-    value: 42
+    values: [0, 1]
   dataset-source:
     value: d4rl
   dataset-name:
     value: walker2d-medium-v2
   algorithm:
-    value: independent_targets
+    value: sac-n
+
+  # just a few updates before the estimates stabilize
   num_updates:
-    value : 50_000
+    value : 20_000
   eval_interval:
     value: 500
   eval_workers:
     value: 8
   eval_final_episodes:
-    value: 100
+    value: 0
+
+  checkpoint:
+    value: True
+  checkpoint_dir:
+    value: "./checkpoints/diversity_ood_stability"
 
   # --- Logging ---
-  log:
+  diversity_logs: # log diversity metrics
     value: true
   wandb_project:
-    value: diverse-msg
+    value: diversity_stability
   wandb_team:
     value: ahoj
   wandb_group:
@@ -40,6 +46,8 @@ parameters:
 
   # --- Generic optimization ---
   lr:
+    value: 3e-4
+  actor_lr:
     value: 3e-4
   batch_size:
     value: 256
@@ -52,22 +60,25 @@ parameters:
   num_critics:
     values: [10, 30]
 
-  # --- MSG ---
-  cql_min_q_weight: 
-    values:
-      - 4.0
-  actor_lcb_coef : 
-    values : [4.0]
-
   pi_operator:
-    value:
+    values:
       - min
 
+  # just use shared for illustration
+  shared_targets:
+    value: True
+
+  critic_regularization:
+    value: "none"
+  ensemble_regularizer:
+    value: "none"
+
+  # no extra fancy stuff
   # --- pretraining
   pretrain_updates:
     value: 0
 
   # --- RFP
   prior:
-    value:
+    values:
       - False
