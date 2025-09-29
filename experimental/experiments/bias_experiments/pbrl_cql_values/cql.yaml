@@ -1,44 +1,46 @@
+
 command:
   - python3
   - ${program}
   - ${args_no_boolean_flags}
 entity: ahoj
 method: grid
-name: independent_targets
+name: CQL
 program: algorithms/unified.py
-project: diversity-ood-stability
+project: pbrl-cql-bias
 
 parameters:
   # --- Experiment ---
   seed:
-    values: [0, 1]
+    values: [0, 1, 2]
   dataset-source:
     value: d4rl
   dataset-name:
-    value: walker2d-medium-v2
+    values:
+        - halfcheetah-expert-v2
   algorithm:
-    value: sac-n
+    value: CQL
 
   # just a few updates before the estimates stabilize
   num_updates:
-    value : 20_000
+    value : 300_000
   eval_interval:
-    value: 500
+    value: 10_000
   eval_workers:
     value: 8
   eval_final_episodes:
-    value: 0
+    value: 1000
 
   checkpoint:
     value: True
   checkpoint_dir:
-    value: "./checkpoints/diversity_ood_stability"
+    value: "./checkpoints/sacn_expert"
 
   # --- Logging ---
   diversity_logs: # log diversity metrics
     value: true
   wandb_project:
-    value: diversity_stability
+    value: nan
   wandb_team:
     value: ahoj
   wandb_group:
@@ -58,18 +60,29 @@ parameters:
 
   # --- SAC-N ---
   num_critics:
-    values: [10, 30]
+    value: 2
 
   pi_operator:
     values:
       - min
 
-  # just use shared for illustration
   shared_targets:
     value: True
 
   critic_regularizer:
-    value: "none"
+    values: 
+      - "pbrl"
+
+  # temp
+  critic_regularizer_parameter:
+    value: 1
+
+  # CQL penalty term
+  critic_lagrangian:
+    values:
+      - 0.1 
+      - 10.0
+
   ensemble_regularizer:
     value: "none"
 

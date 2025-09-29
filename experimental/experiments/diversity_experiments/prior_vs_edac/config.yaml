@@ -69,7 +69,7 @@ parameters:
   beta_id:
     value: 0.0
 
-  critic_regularization:
+  critic_regularizer:
     value: "none" 
 
   ensemble_regularizer:

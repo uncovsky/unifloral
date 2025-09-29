@@ -4,35 +4,38 @@ command:
   - ${args_no_boolean_flags}
 entity: ahoj
 method: grid
-name: independent_targets
+name: SACN
 program: algorithms/unified.py
-project: diversity-ood-stability
+project: sac_n-expert
 
 parameters:
   # --- Experiment ---
   seed:
-    values: [0, 1]
+    values: [0, 1, 2]
   dataset-source:
     value: d4rl
   dataset-name:
-    value: walker2d-medium-v2
+    values:
+        - halfcheetah-expert-v2
+        - hopper-expert-v2
+        - walker2d-expert-v2
   algorithm:
     value: sac-n
 
   # just a few updates before the estimates stabilize
   num_updates:
-    value : 20_000
+    value : 1_000_000
   eval_interval:
-    value: 500
+    value: 10_000
   eval_workers:
     value: 8
   eval_final_episodes:
-    value: 0
+    value: 1000
 
   checkpoint:
     value: True
   checkpoint_dir:
-    value: "./checkpoints/diversity_ood_stability"
+    value: "./checkpoints/sacn_expert"
 
   # --- Logging ---
   diversity_logs: # log diversity metrics
@@ -69,7 +72,19 @@ parameters:
     value: True
 
   critic_regularizer:
-    value: "none"
+    values: 
+      - "none"
+      - "pbrl"
+
+  # ood actions sampled
+  critic_regularizer:
+    value: 4
+
+  # kinda small
+  critic_lagrangian:
+    values:
+      - 0.1 
+      - 0.5
   ensemble_regularizer:
     value: "none"
 
