@@ -27,6 +27,10 @@ from infra import make_pretrain_step, select_regularizer, select_ood_regularizer
 from infra.dataset import OfflineDatasetWrapper
 from infra.utils import linear_schedule, constant_schedule, exponential_schedule, combined_schedule
 
+# For diversity logs
+from infra.utils.diversity_utils import prepare_ood_dataset,\
+        get_diversity_statistics, compute_qvalue_statistics, diversity_loss
+
 from infra.models.actor import TanhGaussianActor, EntropyCoef
 from infra.models.critic import VectorQ, PriorVectorQ
 
@@ -118,17 +122,8 @@ class Args:
     randomized_prior_depth : int = 3
     randomized_prior_scale : float = 1.0
 
-
-AgentTrainState = namedtuple("AgentTrainState", "actor vec_q vec_q_target alpha pretrain_lag train_step")
-Transition = namedtuple("Transition", "obs action reward next_obs next_action done")
-
-
-def create_train_state(args, rng, network, dummy_input, lr=None):
-    return TrainState.create(
-        apply_fn=network.apply,
-        params = network.init(rng, *dummy_input),
-        tx=optax.adam(lr if lr is not None else args.lr, eps=1e-5),
-        )
+    # --- Additional Logs ---
+    diversity_logs: bool = False # Log std and disagreement
 
 
 def print_args(args):
@@ -155,7 +150,21 @@ def print_args(args):
         print(f"Pretraining for {args.pretrain_updates} updates with {args.pretrain_loss} loss and lagrangian {args.pretrain_lagrangian}")
     print(50 * "=")
 
-def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset):
+
+AgentTrainState = namedtuple("AgentTrainState", "actor vec_q vec_q_target alpha pretrain_lag train_step")
+Transition = namedtuple("Transition", "obs action reward next_obs next_action done")
+
+
+def create_train_state(args, rng, network, dummy_input, lr=None):
+    return TrainState.create(
+        apply_fn=network.apply,
+        params = network.init(rng, *dummy_input),
+        tx=optax.adam(lr if lr is not None else args.lr, eps=1e-5),
+        )
+
+
+def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset,
+                    ood_obs=None, ood_actions=None):
     """
     Make JIT-compatible agent train step.
 
@@ -377,6 +386,33 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset):
         for k, v in logs.items():
             loss[k] = v
 
+
+        if args.diversity_logs:
+
+            # --- DIVERSITY: get EDAC diversity loss --- 
+            diversity_loss_val = diversity_loss(q_apply_fn, 
+                                                agent_state, 
+                                                batch.obs, 
+                                                batch.action, 
+                                                args.num_critics)
+
+            # --- DIVERSITY: sample random actions and eval ---
+            rng_perturb, rng = jax.random.split(rng)
+            diversity_stats = get_diversity_statistics(q_apply_fn, actor_apply_fn,
+                                                       agent_state, rng_perturb,
+                                                       batch.obs, batch.action)
+            # --- DIVERSITY: get info on OOD data ---
+            ood_stats = compute_qvalue_statistics(q_apply_fn,
+                                                  agent_state,
+                                                  ood_obs, 
+                                                  ood_actions)
+            # Add to logs
+            for k, v in ood_stats.items():
+                loss[f"ood_{k}"] = v
+            loss["edac_loss"] = diversity_loss_val
+            for k, v in diversity_stats.items():
+                loss[f"diversity_{k}"] = v
+
         return (rng, agent_state), loss
 
     return _train_step
@@ -384,7 +420,32 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset):
 
 
 def train(args):
+
     rng = jax.random.PRNGKey(args.seed)
+
+    """
+        Setup OOD dataset if diversity logs are enabled
+    """
+    if args.diversity_logs:
+
+        """
+            get a different dataset, on which we will evaluate 
+            ensemble diversity stats (std, disagreement)
+        """
+        print("Preparing OOD dataset for diversity logs...")
+        ood_dataset_name = args.dataset_name.split("-")[0] + "-expert-v2"
+        if args.dataset_name == ood_dataset_name:
+            # If expert dataset, use medium
+            ood_dataset_name = args.dataset_name.split("-")[0] + "-medium-v2"
+        rng, rng_ood = jax.random.split(rng)
+        ood_obs, ood_actions = prepare_ood_dataset(rng_ood,
+                                                  dataset_name=ood_dataset_name,
+                                                  ood_samples=50)
+
+        args.log = True # Force logging if diversity logs are enabled
+    else:
+        # Don't pass any OOD data
+        ood_obs, ood_actions = None, None
 
     # --- Initialize logger ---
     if args.log:
@@ -398,6 +459,8 @@ def train(args):
 
     dataset_wrapper = OfflineDatasetWrapper(source=args.dataset_source,
                                             dataset=args.dataset_name)
+
+    
 
     # --- Initialize environment and dataset ---
     rng, rng_env = jax.random.split(rng)
@@ -448,7 +511,8 @@ def train(args):
 
     # --- Make train step ---
     _agent_train_step_fn = make_train_step(
-        args, actor_net.apply, q_apply, alpha_net.apply, dataset
+        args, actor_net.apply, q_apply, alpha_net.apply, dataset, 
+        ood_obs=ood_obs, ood_actions=ood_actions
     )
 
     # --- Make pretrain step ---
@@ -496,6 +560,7 @@ def train(args):
                     "num_updates": step,
                     **{k: loss[k][-1] for k in loss},
                 }
+
                 wandb.log(log_dict)
 
     num_evals = (args.num_updates - args.pretrain_updates) // args.eval_interval
