@@ -79,8 +79,7 @@ parameters:
 
   # smal enough value
   reg_lagrangian:
-    value:
-      - 0.1
+    value: 0.1
 
   # --- no pretraining
   pretrain_updates:

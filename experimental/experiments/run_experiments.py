@@ -35,11 +35,16 @@ if __name__ == "__main__":
 
     # All the experiments in the thesis
     experiment_folders = [
-        "experiments/bandit_experiments/configs",
         
         "experiments/diversity_experiments/std_ood_data",
         "experiments/diversity_experiments/shared_indep_targets",
         "experiments/diversity_experiments/prior_vs_edac",
+
+        "experiments/bias_experiments/sac_n_expert",
+        "experiments/bias_experiments/pbrl_cql_values",
+
+        "experiments/bandit_experiments/configs",
+        "experiments/reachability_experiments/",
     ]
 
 
