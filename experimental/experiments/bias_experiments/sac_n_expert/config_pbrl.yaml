@@ -33,6 +33,9 @@ parameters: # --- Experiment ---
   checkpoint_dir:
     value: "./checkpoints/sacn_expert"
 
+  # --- Logging ---
+  log:
+    value: true
   wandb_project:
     value: diversity_stability
   wandb_team:
