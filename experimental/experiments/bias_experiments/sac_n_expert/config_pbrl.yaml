@@ -1,0 +1,93 @@
+command:
+  - python3
+  - ${program}
+  - ${args_no_boolean_flags}
+entity: ahoj
+method: grid
+name: SACN_reg
+program: algorithms/unified.py
+project: sac_n-expert
+
+parameters: # --- Experiment ---
+  seed:
+    values: [0, 1, 2]
+  dataset-source:
+    value: d4rl
+  dataset-name:
+    values:
+        - halfcheetah-expert-v2
+  algorithm:
+    value: sac-n
+
+  num_updates:
+    value : 1_000_000
+  eval_interval:
+    value: 10_000
+  eval_workers:
+    value: 8
+  eval_final_episodes:
+    value: 1000
+
+  checkpoint:
+    value: True
+  checkpoint_dir:
+    value: "./checkpoints/sacn_expert"
+
+  # --- Logging ---
+  diversity_logs: # log diversity metrics
+    value: true
+  wandb_project:
+    value: diversity_stability
+  wandb_team:
+    value: ahoj
+  wandb_group:
+    value: debug
+
+  # --- Generic optimization ---
+  lr:
+    value: 3e-4
+  actor_lr:
+    value: 3e-4
+  batch_size:
+    value: 256
+  gamma:
+    value: 0.99
+  polyak_step_size:
+    value: 0.005
+
+  # --- SAC-N ---
+  num_critics:
+    value: 10
+  pi_operator:
+    values:
+      - min
+
+  # just use shared for illustration
+  shared_targets:
+    value: True
+
+  critic_regularizer:
+    values: 
+      - "pbrl"
+
+  # ood actions sampled
+  critic_regularizer_parameter:
+    value: 4
+
+  # kinda small
+  critic_lagrangian:
+    values:
+      - 0.1 
+      - 0.5
+  ensemble_regularizer:
+    value: "none"
+
+  # no extra fancy stuff
+  # --- pretraining
+  pretrain_updates:
+    value: 0
+
+  # --- RFP
+  prior:
+    values:
+      - False
