@@ -17,8 +17,6 @@ parameters:
   dataset-name:
     values:
         - halfcheetah-expert-v2
-        - hopper-expert-v2
-        - walker2d-expert-v2
   algorithm:
     value: sac-n
 
@@ -71,19 +69,12 @@ parameters:
     value: True
 
   critic_regularizer:
-    values: 
-      - "none"
-      - "pbrl"
+    value: "none"
 
   # ood actions sampled
   critic_regularizer_parameter:
     value: 4
 
-  # kinda small
-  critic_lagrangian:
-    values:
-      - 0.1 
-      - 0.5
   ensemble_regularizer:
     value: "none"
 
