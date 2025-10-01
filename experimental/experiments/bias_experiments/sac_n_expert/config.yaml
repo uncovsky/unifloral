@@ -22,7 +22,6 @@ parameters:
   algorithm:
     value: sac-n
 
-  # just a few updates before the estimates stabilize
   num_updates:
     value : 1_000_000
   eval_interval:
@@ -77,7 +76,7 @@ parameters:
       - "pbrl"
 
   # ood actions sampled
-  critic_regularizer:
+  critic_regularizer_parameter:
     value: 4
 
   # kinda small

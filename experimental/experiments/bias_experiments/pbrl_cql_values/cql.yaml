@@ -34,7 +34,7 @@ parameters:
   checkpoint:
     value: True
   checkpoint_dir:
-    value: "./checkpoints/sacn_expert"
+    value: "./checkpoints/pbrl_cql_bias"
 
   # --- Logging ---
   diversity_logs: # log diversity metrics
