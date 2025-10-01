@@ -37,6 +37,11 @@ parameters:
   eval_final_episodes:
     value: 1000
 
+  checkpoint:
+    value: True
+  checkpoint_dir:
+    value: "./checkpoints/reachability"
+
   # --- Logging ---
   log:
     value: true
