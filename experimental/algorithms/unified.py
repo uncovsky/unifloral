@@ -84,6 +84,7 @@ class Args:
     critic_lagrangian: float = 1.0
     critic_norm: str = "none" # \in {"none", "layer"}
     critic_regularizer_parameter : int = 1 # Num of sampled actions for PBRL, temp for CQL
+    filtering_quantile: float = 0.5 # Quantile for filtering in PBRL
 
     # ---  Pretraining ---
     pretrain_updates : int = 0
@@ -107,7 +108,7 @@ def print_args(args):
     """
         Prints out the training settings in human-friendly format.
     """
-    parameter_semantics = "ood actions sampled" if args.critic_regularizer in ["msg", "pbrl"] else "temperature"
+    parameter_semantics = "ood actions sampled" if args.critic_regularizer in ["msg", "pbrl", "filtered_pbrl"] else "temperature"
     print(50 * "=")
     print("Training with the following settings:")
     print("Dataset: ", args.dataset_name, " from ", args.dataset_source)
@@ -192,8 +193,6 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset,
     """
         Get regularizers for ensemble diversity and OOD critic values.
     """
-    assert args.critic_regularizer in ["none", "cql", "pbrl", "msg"]
-    assert args.ensemble_regularizer in ["none", "edac", "std", "mean_vector"]
     assert args.pi_operator in ["min", "lcb"]
 
     ensemble_regularizer_fn = select_regularizer(args, actor_apply_fn, q_apply_fn)

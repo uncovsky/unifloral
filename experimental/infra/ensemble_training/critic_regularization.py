@@ -41,8 +41,19 @@ def regularizer_factory(args, actor_apply_fn, q_apply_fn):
 
         return _noop_loss_fn
     
-    def pbrl_regularizer(agent_state, rng, batch):
+    def pbrl_regularizer(agent_state, rng, batch, filtered=False,
+                                                  use_next_states=False):
 
+        """
+            PBRL regularization
+            
+            _filtered_ is a flag to use adaptive action filtering, based on the
+            std of the Q-values. This is not used in the original PBRL paper,
+
+            _use_next_states_ is a flag to use next states for the second part
+            of the loss, original PBRL implementation uses next_state
+            penalization with a fixed coefficient of 0.1.
+        """
         # nondifferentiated part
         rng_curr, rng_next = jax.random.split(rng, 2)
 
@@ -56,40 +67,60 @@ def regularizer_factory(args, actor_apply_fn, q_apply_fn):
 
         # [action_num, B, action_dim] -> [B, action_num, action_dim]
         ood_actions = jnp.swapaxes(ood_actions, 0, 1)
-        ood_actions_next = jnp.swapaxes(ood_actions_next, 0, 1)
 
         # Make a (B, num_samples, obs_dim) state tensor for calculating Q vals
         states = jnp.expand_dims(batch.obs, axis=1).repeat(args.critic_regularizer_parameter, axis=1)
-        next_states = jnp.expand_dims(batch.next_obs,axis=1).repeat(args.critic_regularizer_parameter, axis=1)
+
+        if use_next_states:
+            next_states = jnp.expand_dims(batch.next_obs,axis=1).repeat(args.critic_regularizer_parameter, axis=1)
+            ood_actions_next = jnp.swapaxes(ood_actions_next, 0, 1)
         
         def _loss_fn(q_pred, critic_params, rng, batch):
 
-            pi_curr = actor_apply_fn(agent_state.actor.params, batch.obs)
+            def _filter_penalties(std_q_ood, quantile):
+                # Filter out a portion of actions with lowest std
+                std_threshold = jnp.quantile(std_q_ood, quantile, axis=1, keepdims=True)
+                mask = (std_q_ood <= std_threshold)
+                return std_q_ood
+
 
             # Get Q vals for ood actions
             q_ood = q_apply_fn(critic_params, 
                                states, ood_actions)
 
-            # shape [B, num_samples, E]
-            q_ood_next = q_apply_fn(critic_params,
-                                    next_states, ood_actions_next)
-
             std_q_ood = jnp.std(q_ood, axis=-1, keepdims=True)
-            std_q_ood_next = jnp.std(q_ood_next, axis=-1, keepdims=True)
 
+            if filtered:
+                std_q_ood = _filter_penalties(std_q_ood,
+                                              args.filtering_quantile)
+            
             # Q - beta_ood * std + clip
             ood_q_target = q_ood - args.critic_lagrangian * std_q_ood
             ood_q_target = jnp.maximum(ood_q_target, 0.0)
             ood_q_target = jax.lax.stop_gradient(ood_q_target)
 
-            # PBRL always keeps this at 0.1
-            ood_q_target_next = q_ood_next - 0.1 * std_q_ood_next
-            ood_q_target_next = jnp.maximum(ood_q_target_next, 0.0)
-            ood_q_target_next = jax.lax.stop_gradient(ood_q_target_next)
-
             # Sum over ensemble, mean over batch and samples
             ood_loss = jnp.square(q_ood - ood_q_target).sum(axis=-1).mean()
-            ood_loss += jnp.square(q_ood_next - ood_q_target_next).sum(axis=-1).mean()
+
+            if use_next_states:
+                # shape [B, num_samples, E]
+                q_ood_next = q_apply_fn(critic_params,
+                                        next_states, ood_actions_next)
+
+                std_q_ood_next = jnp.std(q_ood_next, axis=-1, keepdims=True)
+
+                if filtered:
+                    std_q_ood_next = _filter_penalties(std_q_ood_next,
+                                                       args.filtering_quantile)
+                # PBRL always keeps penalty here at 0.1
+                ood_q_target_next = q_ood_next - 0.1 * std_q_ood_next
+                ood_q_target_next = jnp.maximum(ood_q_target_next, 0.0)
+                ood_q_target_next = jax.lax.stop_gradient(ood_q_target_next)
+                ood_loss += jnp.square(q_ood_next - ood_q_target_next).sum(axis=-1).mean()
+            else:
+                q_ood_next = jnp.array(0.0)
+                std_q_ood_next = jnp.array(0.0)
+                ood_q_target_next = jnp.array(0.0)
 
             logs = {
                 "pbrl_ood_q_mean": q_ood.mean(),
@@ -103,7 +134,6 @@ def regularizer_factory(args, actor_apply_fn, q_apply_fn):
             return ood_loss, logs
 
         return _loss_fn
-
 
     def msg_regularizer(agent_state, rng, batch):
 
@@ -188,7 +218,10 @@ def regularizer_factory(args, actor_apply_fn, q_apply_fn):
 
     loss_dict = {
             "none": noop_loss,
-            "pbrl": pbrl_regularizer,
+            "pbrl": lambda x, y, z: pbrl_regularizer(x, y, z, filtered=False,
+                                                     use_next_states=False),
+            "filtered_pbrl": lambda x, y, z: pbrl_regularizer(x, y, z, filtered=True,
+                                                              use_next_states=False),
             "msg": msg_regularizer,
             "cql": cql_regularizer
     }
