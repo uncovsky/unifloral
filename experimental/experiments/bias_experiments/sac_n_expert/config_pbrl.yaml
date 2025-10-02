@@ -15,7 +15,7 @@ parameters: # --- Experiment ---
     value: d4rl
   dataset-name:
     values:
-        - hopper-expert-v2
+        - walker2d-expert-v2
   algorithm:
     value: sac-n
 
@@ -27,9 +27,6 @@ parameters: # --- Experiment ---
     value: 8
   eval_final_episodes:
     value: 1000
-
-  checkpoint:
-    value: True
   checkpoint_dir:
     value: "./checkpoints/sacn_expert"
 
