@@ -29,7 +29,7 @@ parameters:
     value: sac_n
   num_updates:
     #values: [200_000, 500_000]
-    value : 100_000
+    value : 20_000
   eval_interval:
     value: 10_000
   eval_workers:
@@ -38,7 +38,7 @@ parameters:
     value: 1000
 
   checkpoint:
-    value: True
+    value: False
   checkpoint_dir:
     value: "./checkpoints/reachability"
 
