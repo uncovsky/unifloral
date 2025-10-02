@@ -16,7 +16,7 @@ parameters:
     value: d4rl
   dataset-name:
     values:
-        - halfcheetah-expert-v2
+        - hopper-expert-v2
   algorithm:
     value: sac-n
 

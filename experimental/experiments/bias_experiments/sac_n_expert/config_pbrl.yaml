@@ -15,7 +15,7 @@ parameters: # --- Experiment ---
     value: d4rl
   dataset-name:
     values:
-        - halfcheetah-expert-v2
+        - hopper-expert-v2
   algorithm:
     value: sac-n
 
@@ -69,6 +69,7 @@ parameters: # --- Experiment ---
   critic_regularizer:
     values: 
       - "pbrl"
+      - "cql"
 
   # ood actions sampled
   critic_regularizer_parameter:
