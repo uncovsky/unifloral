@@ -60,10 +60,10 @@ parameters:
     value: 0.005
 
 
+  # Add back the basic pbrl
   critic_regularizer:
-    values:
-      - "pbrl"
-      - "filtered_pbrl"
+    value: "filtered_pbrl"
+      
 
   critic_lagrangian:
     value: 2.0
