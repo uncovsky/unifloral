@@ -40,6 +40,9 @@ parameters:
   # --- Logging ---
   log:
     value: true
+  checkpoint_dir:
+    value: "./checkpoints/filtering"
+
   wandb_project:
     value: eval-pbrl
   wandb_team:
