@@ -81,7 +81,7 @@ def regularizer_factory(args, actor_apply_fn, q_apply_fn):
                 # Filter out a portion of actions with lowest std
                 std_threshold = jnp.quantile(std_q_ood, quantile, axis=1, keepdims=True)
                 mask = (std_q_ood <= std_threshold)
-                return std_q_ood
+                return std_q_ood * mask
 
 
             # Get Q vals for ood actions
