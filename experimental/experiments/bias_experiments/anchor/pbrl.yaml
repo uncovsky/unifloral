@@ -79,8 +79,6 @@ parameters:
     value: 2.0
   critic_regularizer_parameter:
     value: 10
-  filtering_quantile:
-    value: 0.5
   
   # --- pretraining
   pretrain_updates:
