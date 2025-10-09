@@ -76,7 +76,7 @@ def regularizer_factory(args, actor_apply_fn, q_apply_fn):
         ood_actions = jnp.concatenate([ood_actions, unif_actions], axis=1)
 
         # Make a (B, num_samples, obs_dim) state tensor for calculating Q vals
-        states = jnp.expand_dims(batch.obs, axis=1).repeat(args.critic_regularizer_parameter, axis=1)
+        states = jnp.expand_dims(batch.obs, axis=1).repeat(2 * args.critic_regularizer_parameter, axis=1)
 
         if use_next_states:
             next_states = jnp.expand_dims(batch.next_obs,axis=1).repeat(args.critic_regularizer_parameter, axis=1)
