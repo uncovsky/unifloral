@@ -4,17 +4,11 @@ import jax
 import jax.numpy as jnp
 import optax
 
-# Assortion of JIT-compilable pretraining functions for the model, consider 
-# different regularizations for critic, actor, etc.
-# should we use MC returns as well?
+"""
 
-# distributional pretraining?
-
-# should be vmappable over batches like actor/critic losses, like so
-# make a function that selects the right pretraining loss based on argument,
-# sort of a "loss factory".
-
-# Add lagrangian for scheduling of losses
+ Assortion of JIT-compilable pretraining functions for the model, consider 
+ different regularizations for critic, actor, etc.
+"""
 
 def pretrain_loss_factory(args, actor_apply_fn, q_apply_fn, alpha_apply_fn):
 
