@@ -99,6 +99,9 @@ def regularizer_factory(args, actor_apply_fn, q_apply_fn):
                 # [B, num_samples, 1]
                 filtered_std_q_ood = std_q_ood * mask
 
+                # rescale mask to maintain loss scale
+                mask *= (1.0 / (1.0 - quantile))
+
                 return filtered_q_ood, filtered_std_q_ood
                 
 
