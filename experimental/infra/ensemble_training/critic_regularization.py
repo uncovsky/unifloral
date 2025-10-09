@@ -55,11 +55,12 @@ def regularizer_factory(args, actor_apply_fn, q_apply_fn):
             penalization with a fixed coefficient of 0.1.
         """
         # nondifferentiated part
-        rng_curr, rng_next = jax.random.split(rng, 2)
+        rng_curr, rng_next, rng_unif = jax.random.split(rng, 3)
 
         # Get actions sampled from pi(s) and pi(s')
         pi_curr = actor_apply_fn(agent_state.actor.params, batch.obs)
         pi_next = actor_apply_fn(agent_state.actor.params, batch.next_obs)
+
         ood_actions, _ = pi_curr.sample_and_log_prob(seed=rng_curr,
                                                      sample_shape=(args.critic_regularizer_parameter,))
         ood_actions_next, _ = pi_next.sample_and_log_prob(seed=rng_next,
@@ -67,6 +68,12 @@ def regularizer_factory(args, actor_apply_fn, q_apply_fn):
 
         # [action_num, B, action_dim] -> [B, action_num, action_dim]
         ood_actions = jnp.swapaxes(ood_actions, 0, 1)
+        # Add uniformly sampled actions
+        unif_actions = jax.random.uniform(
+            rng_unif, shape=(batch.action.shape[0], args.critic_regularizer_parameter, batch.action.shape[1]),
+            minval=-args.action_scale, maxval=args.action_scale
+        )
+        ood_actions = jnp.concatenate([ood_actions, unif_actions], axis=1)
 
         # Make a (B, num_samples, obs_dim) state tensor for calculating Q vals
         states = jnp.expand_dims(batch.obs, axis=1).repeat(args.critic_regularizer_parameter, axis=1)
@@ -84,8 +91,6 @@ def regularizer_factory(args, actor_apply_fn, q_apply_fn):
                     namely those with the highest std of Q-values across the
                     sampled actions.
                 """
-                # Mask to zero out penalties for a portion of actions
-
                 # [B, 1]
                 mean_stds = jnp.mean(std_q_ood, axis=1)
                 # [1, 1]
