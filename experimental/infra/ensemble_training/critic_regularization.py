@@ -90,7 +90,7 @@ def regularizer_factory(args, actor_apply_fn, q_apply_fn):
                 mean_stds = jnp.mean(std_q_ood, axis=1)
                 # [1, 1]
                 state_threshold = jnp.quantile(mean_stds, quantile, axis=0, keepdims=True)
-                mask = (mean_stds <= state_threshold).astype(jnp.float32)
+                mask = (mean_stds >= state_threshold).astype(jnp.float32)
                 # [B, 1, 1] mask for Q-values
                 mask = jnp.expand_dims(mask, axis=-1)
 
