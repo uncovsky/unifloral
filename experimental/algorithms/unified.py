@@ -21,18 +21,23 @@ import tyro
 import wandb
 import tqdm
 
+import infra
+import infra.utils
 
 from infra import make_pretrain_step, select_regularizer, select_ood_regularizer
-
 from infra.dataset import OfflineDatasetWrapper
-from infra.utils import linear_schedule, constant_schedule, exponential_schedule, combined_schedule
+from infra.utils import linear_schedule, constant_schedule, \
+    exponential_schedule, combined_schedule, print_args
 
 # For diversity logs
-from infra.utils.diversity_utils import prepare_ood_dataset,\
+from infra.utils.diversity_utils import prepare_ood_dataset, \
         get_diversity_statistics, compute_qvalue_statistics, diversity_loss
 
 from infra.models.actor import TanhGaussianActor, EntropyCoef
 from infra.models.critic import VectorQ, PriorVectorQ
+
+from infra.checkpoints import create_checkpoint_dir, get_experiment_dirname, save_train_state
+
 
 
 os.environ["XLA_FLAGS"] = "--xla_gpu_triton_gemm_any=True"
@@ -104,66 +109,6 @@ class Args:
     diversity_logs: bool = False # Log std and disagreement
 
 
-def print_args(args):
-    """
-        Prints out the training settings in human-friendly format.
-    """
-    parameter_semantics = "ood actions sampled" if args.critic_regularizer in ["msg", "pbrl", "filtered_pbrl"] else "temperature"
-    print(50 * "=")
-    print("Training with the following settings:")
-    print("Dataset: ", args.dataset_name, " from ", args.dataset_source)
-    print("Ensemble size: ", args.num_critics)
-    print("PE operator: ",  "shared" if args.shared_targets else f"independent with {args.beta_id} std penalty")
-    print("PI operator: ", args.pi_operator)
-    if args.pi_operator == "lcb":
-        print(f"\t with LCB penalty: {args.actor_lcb_penalty}")
-    print(f"Critic regularizer: {args.critic_regularizer}, with lagrangian: {args.critic_lagrangian} and ", end="")
-    print(f"{parameter_semantics}: {args.critic_regularizer_parameter}")
-    print(f"Ensemble regularizer: {args.ensemble_regularizer} with lagrangian: {args.reg_lagrangian}")
-    if args.critic_norm != "none":
-        print(f"Using {args.critic_norm} normalization for critics")
-    if args.prior:
-        print(f"Using prior functions of depth {args.randomized_prior_depth} and scale {args.randomized_prior_scale}")
-    if args.pretrain_updates > 0:
-        print(f"Pretraining for {args.pretrain_updates} updates with {args.pretrain_loss} loss and lagrangian {args.pretrain_lagrangian}")
-    print(50 * "=")
-
-
-def get_experiment_dirname(args):
-    """
-        Maps args to a directory name which will be used to store 
-        checkpoints and final returns.
-
-        we will save the data in 
-            checkpoint_dir/{experiment_dir}/checkpoints
-            ,and 
-            checkpoint_dir/{experiment_dir}/final_returns respectively.
-
-    """
-
-    name = f"{args.algorithm}_{args.dataset_name}"
-    filtered_name = name.replace("/", "_").replace(".", "_")
-    time = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-    filtered_name = f"{filtered_name}/{time}"
-    filtered_name = f"{args.checkpoint_dir}/{filtered_name}"
-
-    return filtered_name
-
-
-"""
-    Checkpointing
-"""
-
-def create_checkpoint_dir(exp_dir):
-    ckpt_dir = exp_dir + "/checkpoints"
-    ckpt_dir = os.path.abspath(ckpt_dir)
-    os.makedirs(ckpt_dir, exist_ok=True)
-    return ckpt_dir
-
-def save_train_state(train_state, ckpt_dir, step):
-    checkpoints.save_checkpoint(ckpt_dir, target=train_state, step=step,
-                                overwrite=False, keep=2)
-    print(f"Checkpoint saved at step {step} in {ckpt_dir}")
 
 
 """
@@ -624,6 +569,64 @@ def train(args):
                 **{k: loss[k][-1] for k in loss},
             }
             wandb.log(log_dict)
+
+        # --- Plot actions --- 
+        if "bandit" in args.dataset_name:
+            # --- Visualize Q-values ----
+            import matplotlib.pyplot as plt
+            rng, rng_viz = jax.random.split(rng)
+
+            def visualize_q_vals(rng):
+                actions = jnp.linspace(-args.action_scale, args.action_scale, 1000).reshape(-1, 1)
+
+                state = dataset.obs[0].reshape(1, -1)
+                states = jnp.repeat(state, repeats=1000, axis=0)
+
+                q_values = q_apply(agent_state.vec_q.params, states, actions)
+
+                rng, rng_sample = jax.random.split(rng)
+                pi = actor_net.apply(agent_state.actor.params, state)
+                samples = pi.sample(seed=rng_sample, sample_shape=(1000,))
+                print("Sampled actions: ", samples.mean(), samples.std())
+                samples = jnp.asarray(samples).reshape(-1)
+
+                fig, ax1 = plt.subplots(figsize=(8, 4))
+
+                colors = plt.cm.tab10.colors  # 10 distinct colors
+                num_critics = q_values.shape[-1]
+
+                for critic in range(num_critics):
+                    color = colors[critic % len(colors)]  # wrap if > 10 critics
+                    ax1.plot(
+                        actions,
+                        q_values[:, critic],
+                        linestyle="dotted",
+                        color=color,
+                        alpha=0.8,
+                        linewidth=2.5,
+                        label=f"Critic {critic+1}"
+                    )
+                ax1.set_xlabel("Action", fontsize=14)
+                ax1.set_ylabel("Q-value", fontsize=14)
+                ax1.tick_params(axis='y', labelcolor='tab:blue')
+
+                """
+                ax2 = ax1.twinx()
+                ax2.hist(samples, bins=30, range=(-args.action_scale, args.action_scale),
+                         density=True, alpha=0.4, color="tab:green", label="Action samples")
+                ax2.tick_params(axis='y', labelcolor='tab:green')
+                ax2.legend(loc='upper right')
+                """
+
+                true_values = jnp.where(jnp.abs(actions) > 0.5, 1.0, -1.0)
+                ax1.plot(actions, true_values, linestyle='dashed', color='black', label='True Value')
+
+                fig.tight_layout()
+                ax1.legend(loc='upper left', fontsize=14)
+                plt.title("Q-values", fontsize=16)
+                plt.show()
+            visualize_q_vals(rng_viz)
+
 
     # Save final checkpoint for evaluation
     if args.checkpoint:
