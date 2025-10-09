@@ -53,5 +53,37 @@ def collect_bandit_data(episodes=1000, seed=0):
             ref_max_score=1,
             algorithm_name='SAC',
             author='uncovsky',
-            description='Pendulum expert dataset collected using SAC'
+    )
+
+def collect_cql_data(episodes=10000, seed=0):
+
+    np.random.seed(seed)
+    env = gym.make("ContinuousBandit-v0")
+    collector = DataCollector(env)
+    policy = mixed_expert_policy
+
+    obs, _ = collector.reset(seed=seed)
+
+    for ep in tqdm.tqdm(range(episodes), desc="Collecting Bandit expert data"):
+
+        if ep > 9/10 * episodes:
+            a = policy(obs)  # expert in last 10% of data
+        else:
+            # 90% of data is random
+            a = np.random.uniform(-0.5, 0.5, size=(1,)).astype(np.float32)
+
+        next_obs, reward, terminated, truncated, _ = collector.step(a)
+        obs, _ = collector.reset()
+
+
+        # same state every ep
+
+    # Create minari dataset
+    collector.create_dataset(
+            dataset_id='bandit_cql-v0',
+            eval_env=env,
+            ref_min_score=-1,
+            ref_max_score=1,
+            algorithm_name='SAC',
+            author='uncovsky',
     )
