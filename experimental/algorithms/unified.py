@@ -89,7 +89,11 @@ class Args:
     critic_lagrangian: float = 1.0
     critic_norm: str = "none" # \in {"none", "layer"}
     critic_regularizer_parameter : int = 1 # Num of sampled actions for PBRL, temp for CQL
+
+    # --- expertimental OOD filtering in PBRL ---
     filtering_quantile: float = 0.5 # Quantile for filtering in PBRL
+    filtering_epsilon: float = 1.5 # Epsilon margin for filtering in PBRL
+
 
     # ---  Pretraining ---
     pretrain_updates : int = 0
@@ -609,14 +613,11 @@ def train(args):
                 ax1.set_xlabel("Action", fontsize=14)
                 ax1.set_ylabel("Q-value", fontsize=14)
                 ax1.tick_params(axis='y', labelcolor='tab:blue')
-
-                """
                 ax2 = ax1.twinx()
                 ax2.hist(samples, bins=30, range=(-args.action_scale, args.action_scale),
                          density=True, alpha=0.4, color="tab:green", label="Action samples")
                 ax2.tick_params(axis='y', labelcolor='tab:green')
                 ax2.legend(loc='upper right')
-                """
 
                 true_values = jnp.where(jnp.abs(actions) > 0.5, 1.0, -1.0)
                 ax1.plot(actions, true_values, linestyle='dashed', color='black', label='True Value')

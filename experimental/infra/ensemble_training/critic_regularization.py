@@ -126,12 +126,18 @@ def regularizer_factory(args, actor_apply_fn, q_apply_fn):
 
         # [action_num, B, action_dim] -> [B, action_num, action_dim]
         ood_actions = jnp.swapaxes(ood_actions, 0, 1)
+
+        mean_dist_from_support = jnp.square(ood_actions - batch.action[:, None, :]).mean()
+
+
         # Add uniformly sampled actions
         unif_actions = jax.random.uniform(
             rng_unif, shape=(batch.action.shape[0], args.critic_regularizer_parameter, batch.action.shape[1]),
             minval=-args.action_scale, maxval=args.action_scale
         )
+
         ood_actions = jnp.concatenate([ood_actions, unif_actions], axis=1)
+
 
         # Make a (B, num_samples, obs_dim) state tensor for calculating Q vals
         states = jnp.expand_dims(batch.obs, axis=1).repeat(2 * args.critic_regularizer_parameter, axis=1)
@@ -142,28 +148,37 @@ def regularizer_factory(args, actor_apply_fn, q_apply_fn):
         
         def _loss_fn(q_pred, critic_params, rng, batch):
 
-            def _filter_penalties(q_ood, std_q_ood, quantile):
+            def _filter_penalties(q_ood, std_q_ood, eps):
 
                 """
                     Modifies the OOD penalty only to certain states in the batch,
                     namely those with the highest std of Q-values across the
                     sampled actions.
+
+                    state based quantile filter:
+                            # [B, 1]
+                            mean_stds = jnp.mean(std_q_ood, axis=1)
+                            # [1, 1]
+                            state_threshold = jnp.quantile(mean_stds, quantile, axis=0, keepdims=True)
+                            mask = (mean_stds >= state_threshold).astype(jnp.float32)
+                            # [B, 1, 1] mask for Q-values
+                            mask = jnp.expand_dims(mask, axis=-1)
+
+                            # [B, num_samples, e]
+                            filtered_q_ood = q_ood * mask
+                            # [B, num_samples, 1]
+                            filtered_std_q_ood = std_q_ood * mask
+
+                            # rescale mask to maintain loss scale
+                            mask *= (1.0 / (1.0 - quantile))
                 """
-                # [B, 1]
-                mean_stds = jnp.mean(std_q_ood, axis=1)
-                # [1, 1]
-                state_threshold = jnp.quantile(mean_stds, quantile, axis=0, keepdims=True)
-                mask = (mean_stds >= state_threshold).astype(jnp.float32)
-                # [B, 1, 1] mask for Q-values
-                mask = jnp.expand_dims(mask, axis=-1)
 
-                # [B, num_samples, e]
-                filtered_q_ood = q_ood * mask
-                # [B, num_samples, 1]
-                filtered_std_q_ood = std_q_ood * mask
-
-                # rescale mask to maintain loss scale
-                mask *= (1.0 / (1.0 - quantile))
+                # [B, 1, 1] stds for batch 
+                std_q_pred = jnp.expand_dims(q_pred.std(axis=-1, keepdims=True), axis=1)
+                std_ratios = std_q_ood / (std_q_pred + 1e-6)
+                ood_mask = std_ratios >= eps
+                filtered_q_ood = jnp.where(ood_mask, q_ood, 0.0)
+                filtered_std_q_ood = jnp.where(ood_mask, std_q_ood, 0.0)
 
                 return filtered_q_ood, filtered_std_q_ood
                 
@@ -175,13 +190,12 @@ def regularizer_factory(args, actor_apply_fn, q_apply_fn):
 
             if filtered:
                 q_ood, std_q_ood = _filter_penalties(q_ood, std_q_ood,
-                                                    args.filtering_quantile)
+                                                    args.filtering_epsilon)
                 
             # Q - beta_ood * std + clip
             ood_q_target = q_ood - args.critic_lagrangian * std_q_ood
             ood_q_target = jnp.maximum(ood_q_target, 0.0)
             ood_q_target = jax.lax.stop_gradient(ood_q_target)
-
             # Sum over ensemble, mean over batch and samples
             ood_loss = jnp.square(q_ood - ood_q_target).sum(axis=-1).mean()
 
@@ -214,6 +228,7 @@ def regularizer_factory(args, actor_apply_fn, q_apply_fn):
                 "pbrl_ood_q_next_std_mean": std_q_ood_next.mean(),
                 "pbrl_ood_q_target_mean": ood_q_target.mean(),
                 "pbrl_ood_q_next_target_mean": ood_q_target_next.mean(),
+                "pbrl_mean_dist_from_support": mean_dist_from_support
             }
 
             return ood_loss, logs
