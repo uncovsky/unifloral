@@ -11,21 +11,24 @@ project: filtered-pbrl
 parameters:
   # --- Experiment ---
   seed:
-    values: [0, 1, 2]
+    values: [0, 1]
   dataset-source:
     value: d4rl
   dataset-name:
     values: 
+      - halfcheetah-medium-v2
+      - halfcheetah-medium-expert-v2
+      - halfcheetah-expert-v2
       - hopper-expert-v2
       - hopper-medium-v2
       - hopper-medium-expert-v2
       - walker2d-medium-v2
       - walker2d-medium-expert-v2
       - walker2d-expert-v2
-        #- antmaze-medium-diverse-v2
-        # - antmaze-large-diverse-v2
-        # - antmaze-medium-play-v2
-        # - antmaze-large-play-v2
+      - antmaze-medium-diverse-v2
+      - antmaze-large-diverse-v2
+      - antmaze-medium-play-v2
+      - antmaze-large-play-v2
   algorithm:
     value: pbrl
   num_updates:
@@ -62,18 +65,19 @@ parameters:
   polyak_step_size:
     value: 0.005
 
-
   # Add back the basic pbrl
   critic_regularizer:
-    value: "filtered_pbrl"
+    values:
+      - "filtered_pbrl"
       
-
   critic_lagrangian:
     value: 2.0
   critic_regularizer_parameter:
     value: 10
-  filtering_quantile:
-    value: 0.5
+  filtering_epsilon:
+    values: 
+      - 1.25
+      - 1.5
   
   # --- pretraining
   pretrain_updates:
