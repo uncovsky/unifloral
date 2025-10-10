@@ -127,7 +127,6 @@ def regularizer_factory(args, actor_apply_fn, q_apply_fn):
         # [action_num, B, action_dim] -> [B, action_num, action_dim]
         ood_actions = jnp.swapaxes(ood_actions, 0, 1)
 
-        mean_dist_from_support = jnp.square(ood_actions - batch.action[:, None, :]).mean()
 
 
         # Add uniformly sampled actions
@@ -228,7 +227,6 @@ def regularizer_factory(args, actor_apply_fn, q_apply_fn):
                 "pbrl_ood_q_next_std_mean": std_q_ood_next.mean(),
                 "pbrl_ood_q_target_mean": ood_q_target.mean(),
                 "pbrl_ood_q_next_target_mean": ood_q_target_next.mean(),
-                "pbrl_mean_dist_from_support": mean_dist_from_support
             }
 
             return ood_loss, logs

@@ -211,19 +211,22 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset,
                     # lcb
                     q_tgt = q_values.mean(-1) - args.actor_lcb_penalty * std_q
 
-                return -q_tgt + alpha * log_pi, -log_pi, q_tgt, std_q
+                return -q_tgt + alpha * log_pi, -log_pi, q_tgt, std_q,sampled_action
 
             rng = jax.random.split(rng, args.batch_size)
-            loss, entropy, q_target, q_std = jax.vmap(_compute_loss)(rng, batch)
-            return loss.mean(), (entropy.mean(), q_target.mean(), q_target.std())
+            loss, entropy, q_target, q_std, actions = jax.vmap(_compute_loss)(rng, batch)
+            mean_dist = jnp.square(actions - batch.action).mean()
+
+            return loss.mean(), (entropy.mean(), q_target.mean(), q_target.std(), mean_dist) 
 
         """
             Update actor
         """
         rng, rng_actor = jax.random.split(rng)
-        (actor_loss, (entropy, q_mean, q_std)), actor_grad = (
+        (actor_loss, (entropy, q_mean, q_std, mean_dist)), actor_grad = (
                 _actor_loss_function(agent_state.actor.params, rng_actor)
                 )
+
         updated_actor = agent_state.actor.apply_gradients(grads=actor_grad)
         agent_state = agent_state._replace(actor=updated_actor)
 
@@ -267,6 +270,9 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset,
         # --- Construct closures around regularizer functions that sample actions, etc. ---
         ensemble_reg_loss = ensemble_regularizer_fn(agent_state, rng_reg, batch)
         critic_reg_loss = critic_regularizer_fn(agent_state, rng_critic, batch)
+
+        rng, rng_pi = jax.random.split(rng, 2)
+
 
         """
             Main critic update (TD+regularizers)
@@ -337,6 +343,7 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset,
         loss = {
                     "critic_loss": critic_loss,
                     "actor_loss": actor_loss,
+                    "mean_action_dist": mean_dist,
                     "alpha_loss": alpha_loss,
                     "ensemble_regularizer_loss": regularizer_loss,
                     "critic_regularizer_loss": critic_regularizer_loss,
