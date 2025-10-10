@@ -173,11 +173,16 @@ def regularizer_factory(args, actor_apply_fn, q_apply_fn):
                 """
 
                 # [B, 1, 1] stds for batch 
-                std_q_pred = jnp.expand_dims(q_pred.std(axis=-1, keepdims=True), axis=1)
+                std_q_pred = q_pred.std(axis=-1, keepdims=True)  
+                std_q_pred = std_q_pred[:, None, :]               
+
+                # Compute ratios and mask
                 std_ratios = std_q_ood / (std_q_pred + 1e-6)
                 ood_mask = std_ratios >= eps
-                filtered_q_ood = jnp.where(ood_mask, q_ood, 0.0)
-                filtered_std_q_ood = jnp.where(ood_mask, std_q_ood, 0.0)
+                ood_mask = ood_mask.astype(q_ood.dtype)
+
+                filtered_q_ood = q_ood * ood_mask
+                filtered_std_q_ood = std_q_ood * ood_mask
 
                 return filtered_q_ood, filtered_std_q_ood
                 
