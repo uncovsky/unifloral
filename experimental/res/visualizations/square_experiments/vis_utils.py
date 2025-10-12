@@ -20,7 +20,7 @@ def parse_and_load_npz(filename: str) -> dict:
 
 
 
-def parse_folder(folder: str) -> pd.DataFrame:
+def parse_folder(root_dir: str) -> pd.DataFrame:
     """Parse all .npz files in a folder and compile into a DataFrame.
 
     Args:
@@ -31,15 +31,15 @@ def parse_folder(folder: str) -> pd.DataFrame:
     """
 
     records = []
-    for file in os.listdir(folder):
-        if file.endswith(".npz"):
-            filepath = os.path.join(folder, file)
-            try:
-                record = parse_and_load_npz(filepath)
-                records.append(record)
-            except Exception as e:
-                print(f"Error parsing {file}: {e}")
-
+    for dirpath, dirnames, filenames in os.walk(root_dir):
+        for file in filenames:
+            if file.endswith(".npz"):
+                filepath = os.path.join(dirpath, file)
+                try:
+                    record = parse_and_load_npz(filepath)
+                    records.append(record)
+                except Exception as e:
+                    print(f"Error parsing {file}: {e}")
 
     df = pd.DataFrame(records)
 

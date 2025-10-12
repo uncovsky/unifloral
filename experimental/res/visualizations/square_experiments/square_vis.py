@@ -13,20 +13,12 @@ from vis_utils import parse_and_load_npz, parse_folder
 
 def process_square_reach_data(df: pd.DataFrame):
     # save raw df
-
+    os.makedirs("csv", exist_ok=True)
     returns = df[[col for col in df.columns if "final_returns" in col]]
     returns.to_csv("csv/square_reach_raw.csv", index=False)
 
-
     # relevant hyperparams for different algorithms
-    cql_params = ['cql_temperature', 'cql_min_q_weight']
-    shared_params = ['num_critics']
-    independent_params = ['num_critics', 'cql_min_q_weight', 'actor_lcb_coef']
-
-    params = {}
-    params["cql"] = cql_params
-    params["shared_targets"] = shared_params
-    params["independent_targets"] = independent_params
+    params = [ "critic_lagrangian", "num_critics" ]
 
     fig, ax = plt.subplots(figsize=(10, 6))
 
@@ -45,38 +37,37 @@ def process_square_reach_data(df: pd.DataFrame):
 
     df["final_returns_mean"] = df["final_returns_mean"].astype(float)
     df["final_returns_std"] = df["final_returns_std"].astype(float)
-    algorithms = df['algorithm'].unique()
+
+    algorithms = df['critic_regularizer'].unique()
 
     # algo name+hyperparams, dataset1_mean, dataset2_mean, ...
     rows = []
 
     for algo in algorithms:
-        if algo not in params:
-            print(f"Algorithm {algo} not in params, skipping!")
-            continue
-        
-        algo_df = df[df['algorithm'] == algo]
-        hyperparams = params[algo]
+
+        algo_df = df[df['critic_regularizer'] == algo]
 
         # Remove duplicit runs logged with same hyperparams, seed, etc.
-        algo_df = algo_df.drop_duplicates(subset=hyperparams + ['dataset_name', 'seed'])
+        #algo_df = algo_df.drop_duplicates(subset=hyperparams + ['dataset_name', 'seed'])
         print(f"Processing {algo}, {len(algo_df)} entries")
 
         grouped = (
-            algo_df.groupby(hyperparams + ['dataset_name'])
+            algo_df.groupby(params + ['dataset_name'])
             .agg(
                 final_returns_mean=('final_returns_mean', 'mean'),
                 final_returns_std=('final_returns_std', 'mean')
             )
             .reset_index()
         )
+
+
         
         grouped.to_csv(f"csv/{algo}_grouped.csv", index=False)
 
         # Build a string label: algo + hyperparam settings
         for group, row in grouped.iterrows():
             desc_parts = [f"{algo}"]
-            desc_parts += [f"{hp}={row[hp]}" for hp in hyperparams]
+            desc_parts += [f"{hp}={row[hp]}" for hp in params]
             desc = ", ".join(desc_parts)
 
             text = row["dataset_name"]
@@ -97,6 +88,7 @@ def process_square_reach_data(df: pd.DataFrame):
                 "final_returns_std": row["final_returns_std"],
             })
 
+    print(rows)
     long_df = pd.DataFrame(rows)
 
     assert not long_df.empty
@@ -211,6 +203,6 @@ def make_square_reach_heatmap(df: pd.DataFrame):
 
 
 if __name__ == "__main__":
-    res = parse_folder("../results/square_reach/")
+    res = parse_folder("reach-results")
     df = process_square_reach_data(res)
     make_square_reach_figures(df)
