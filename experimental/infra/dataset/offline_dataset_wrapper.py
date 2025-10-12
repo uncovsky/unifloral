@@ -269,8 +269,12 @@ def eval_agent_gym(args, rng, env, agent_state):
     seeds_reset = [rng_to_integer_seed(rng) for rng in rng_reset]
 
     env_name = env.env_fns[0]().spec.name
-    if "antmaze" in env_name.lower():
-        warnings.warn("Environment does not support seeding, eval is nondeterministic")
+    env_lower = env_name.lower()
+    mujoco_envs = ["halfcheetah", "hopper", "walker2d"]
+    is_mujoco = any([name in env_lower for name in mujoco_envs])
+
+    if not is_mujoco:
+        warnings.warn("Seeding not supported for non-mujooc envs, eval is nondeterministic")
         obs = env.reset()
     else:
         obs = env.reset(seed=seeds_reset)
