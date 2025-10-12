@@ -308,7 +308,6 @@ def eval_agent_gymnasium(args, rng, env, agent_state):
     """
     # --- Reset environment ---
     step = 0
-
     returned = onp.zeros(args.eval_workers).astype(bool)
     cum_reward = onp.zeros(args.eval_workers)
 
@@ -338,6 +337,7 @@ def eval_agent_gymnasium(args, rng, env, agent_state):
         rng_step = jax.random.split(rng_step, args.eval_workers)
         action = _policy_step(rng_step, jnp.array(obs))
         obs, reward, terminated, truncated, info = env.step(onp.array(action))
+
 
         # --- Update cumulative reward ---
         cum_reward += reward * ~returned
