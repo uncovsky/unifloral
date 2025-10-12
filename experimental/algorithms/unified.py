@@ -33,6 +33,8 @@ from infra.utils import linear_schedule, constant_schedule, \
 from infra.utils.diversity_utils import prepare_ood_dataset, \
         get_diversity_statistics, compute_qvalue_statistics, diversity_loss
 
+from infra.utils.visualization import visualize_q_vals, visualize_reach_bias
+
 from infra.models.actor import TanhGaussianActor, EntropyCoef
 from infra.models.critic import VectorQ, PriorVectorQ
 
@@ -582,58 +584,14 @@ def train(args):
             wandb.log(log_dict)
 
         # --- Plot actions --- 
+        rng, rng_viz = jax.random.split(rng)
+
+        # Visualizations
         if "bandit" in args.dataset_name:
-            # --- Visualize Q-values ----
-            import matplotlib.pyplot as plt
-            rng, rng_viz = jax.random.split(rng)
+            visualize_q_vals(args, agent_state, dataset, q_apply, actor_net.apply, rng_viz)
+        if "reach" in args.dataset_name:
+            visualize_reach_bias(args, agent_state, q_apply, actor_net.apply, rng_viz)
 
-            def visualize_q_vals(rng):
-                actions = jnp.linspace(-args.action_scale, args.action_scale, 1000).reshape(-1, 1)
-
-                state = dataset.obs[0].reshape(1, -1)
-                states = jnp.repeat(state, repeats=1000, axis=0)
-
-                q_values = q_apply(agent_state.vec_q.params, states, actions)
-
-                rng, rng_sample = jax.random.split(rng)
-                pi = actor_net.apply(agent_state.actor.params, state)
-                samples = pi.sample(seed=rng_sample, sample_shape=(1000,))
-                print("Sampled actions: ", samples.mean(), samples.std())
-                samples = jnp.asarray(samples).reshape(-1)
-
-                fig, ax1 = plt.subplots(figsize=(8, 4))
-
-                colors = plt.cm.tab10.colors  # 10 distinct colors
-                num_critics = q_values.shape[-1]
-
-                for critic in range(num_critics):
-                    color = colors[critic % len(colors)]  # wrap if > 10 critics
-                    ax1.plot(
-                        actions,
-                        q_values[:, critic],
-                        linestyle="dotted",
-                        color=color,
-                        alpha=0.8,
-                        linewidth=2.5,
-                        label=f"Critic {critic+1}"
-                    )
-                ax1.set_xlabel("Action", fontsize=14)
-                ax1.set_ylabel("Q-value", fontsize=14)
-                ax1.tick_params(axis='y', labelcolor='tab:blue')
-                ax2 = ax1.twinx()
-                ax2.hist(samples, bins=30, range=(-args.action_scale, args.action_scale),
-                         density=True, alpha=0.4, color="tab:green", label="Action samples")
-                ax2.tick_params(axis='y', labelcolor='tab:green')
-                ax2.legend(loc='upper right')
-
-                true_values = jnp.where(jnp.abs(actions) > 0.5, 1.0, -1.0)
-                ax1.plot(actions, true_values, linestyle='dashed', color='black', label='True Value')
-
-                fig.tight_layout()
-                ax1.legend(loc='upper left', fontsize=14)
-                plt.title("Q-values", fontsize=16)
-                plt.show()
-            visualize_q_vals(rng_viz)
 
 
     # Save final checkpoint for evaluation
