@@ -4,7 +4,7 @@ command:
   - ${args_no_boolean_flags}
 entity: ahoj
 method: random
-name: pbrl
+name: msg
 program: algorithms/unified.py
 project: unifloral-eval
 
@@ -26,7 +26,7 @@ parameters:
       - maze2d-large-v1
       - kitchen-mixed-v0
   algorithm:
-    value: pbrl
+    value: msg
   num_updates:
     value : 1_000_000
   eval_interval:
