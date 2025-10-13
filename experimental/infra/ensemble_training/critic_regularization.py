@@ -229,7 +229,7 @@ def regularizer_factory(args, actor_apply_fn, q_apply_fn):
 
         return _loss_fn
 
-    def msg_regulaizer(agent_state, rng, batch):
+    def msg_regularizer(agent_state, rng, batch):
 
         pi_curr = actor_apply_fn(agent_state.actor.params, batch.obs)
 
