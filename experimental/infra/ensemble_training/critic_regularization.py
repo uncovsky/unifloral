@@ -116,28 +116,19 @@ def regularizer_factory(args, actor_apply_fn, q_apply_fn):
         """
         # nondifferentiated part
         rng_curr, rng_next, rng_unif = jax.random.split(rng, 3)
-
         # Get actions sampled from pi(s) and pi(s')
         pi_curr = actor_apply_fn(agent_state.actor.params, batch.obs)
-        pi_next = actor_apply_fn(agent_state.actor.params, batch.next_obs)
-
         ood_actions, _ = pi_curr.sample_and_log_prob(seed=rng_curr,
                                                      sample_shape=(args.critic_regularizer_parameter,))
 
         # [action_num, B, action_dim] -> [B, action_num, action_dim]
         ood_actions = jnp.swapaxes(ood_actions, 0, 1)
-        # Add uniformly sampled actions
-        unif_actions = jax.random.uniform(
-            rng_unif, shape=(batch.action.shape[0], args.critic_regularizer_parameter, batch.action.shape[1]),
-            minval=-args.action_scale, maxval=args.action_scale
-        )
-
-        ood_actions_all = jnp.concatenate([ood_actions, unif_actions], axis=1)
 
         # Make a (B, num_samples, obs_dim) state tensor for calculating Q vals
-        states = jnp.expand_dims(batch.obs, axis=1).repeat(2 * args.critic_regularizer_parameter, axis=1)
+        states = jnp.expand_dims(batch.obs, axis=1).repeat(args.critic_regularizer_parameter, axis=1)
 
         if use_next_states:
+            pi_next = actor_apply_fn(agent_state.actor.params, batch.next_obs)
             ood_actions_next, _ = pi_next.sample_and_log_prob(seed=rng_next,
                                                               sample_shape=(args.critic_regularizer_parameter,))
             next_states = jnp.expand_dims(batch.next_obs,axis=1).repeat(args.critic_regularizer_parameter, axis=1)
@@ -187,7 +178,7 @@ def regularizer_factory(args, actor_apply_fn, q_apply_fn):
 
             # Get Q vals for ood actions
             q_ood = q_apply_fn(critic_params, 
-                               states, ood_actions_all)
+                               states, ood_actions)
             std_q_ood = jnp.std(q_ood, axis=-1, keepdims=True)
 
             if filtered:
@@ -203,6 +194,9 @@ def regularizer_factory(args, actor_apply_fn, q_apply_fn):
 
             if use_next_states:
 
+                """
+                    legacy, used in original PBRL for some reason
+                """
                 q_ood_next = q_apply_fn(critic_params,
                                         next_states, ood_actions_next)
 
@@ -216,7 +210,6 @@ def regularizer_factory(args, actor_apply_fn, q_apply_fn):
                 ood_q_target_next = q_ood_next - 0.1 * std_q_ood_next
                 ood_q_target_next = jnp.maximum(ood_q_target_next, 0.0)
                 ood_q_target_next = jax.lax.stop_gradient(ood_q_target_next)
-
                 ood_loss += jnp.square(q_ood_next - ood_q_target_next).sum(axis=-1).mean()
             else:
                 q_ood_next = jnp.array(0.0)
@@ -236,7 +229,7 @@ def regularizer_factory(args, actor_apply_fn, q_apply_fn):
 
         return _loss_fn
 
-    def msg_regularizer(agent_state, rng, batch):
+    def msg_regulaizer(agent_state, rng, batch):
 
         pi_curr = actor_apply_fn(agent_state.actor.params, batch.obs)
 
@@ -246,7 +239,6 @@ def regularizer_factory(args, actor_apply_fn, q_apply_fn):
         # [action_num, B, action_dim] -> [B, action_num, action_dim]
         ood_actions = jnp.swapaxes(ood_actions, 0, 1)
         states = jnp.expand_dims(batch.obs, axis=1).repeat(args.critic_regularizer_parameter, axis=1)
-
 
         def _loss_fn(q_pred, critic_params, rng, batch):
             # Get Q vals for ood actions
