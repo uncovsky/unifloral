@@ -7,12 +7,12 @@ import time
 import yaml
 import wandb
 
-from helper_scripts.experiment_utils import sweep_folder, load_configs, get_param
+from helper_scripts.experiment_utils import sweep_folder, load_configs, get_param, wandb_sweep_from_config
 
 
-""" 
-    Run all experiments sequentially on a given 
-    device 
+"""
+    Run all experiments sequentially on a given
+    device
 """
 
 if __name__ == "__main__":
@@ -32,8 +32,7 @@ if __name__ == "__main__":
     gpu_num = args.gpu
     print(f"Using GPU {gpu_num}")
     os.environ["CUDA_VISIBLE_DEVICES"] = str(gpu_num)
-    
-
+    os.environ["XLA_PYTHON_CLIENT_PREALLOCATE"] = "false"
 
     """
     "experiments/diversity_experiments/std_ood_data",
@@ -45,21 +44,21 @@ if __name__ == "__main__":
 
     "experiments/bandit_experiments/configs",
     "experiments/reachability_experiments/",
+    "experiments/unified_experiments/",
     """
 
     # All the experiments in the thesis
     experiment_folders = [
-        "experiments/unified_experiments/",
     ]
 
     unifloral_folders = [
         "experiments/unifloral_eval/",
     ]
 
+    unifloral_runs = 10
 
     for experiment_folder in experiment_folders:
         print(f"Running sweeps in {experiment_folder}")
-        break
 
         sweep_folder(
             experiment_folder,
@@ -78,11 +77,11 @@ if __name__ == "__main__":
 
             for env in datasets:
                 print(f"Running unifloral sweep for {env}")
-                sweep_folder(
-                    unifloral_folder,
+                wandb_sweep_from_config(
+                    config,
                     entity=args.entity,
                     project=args.project,
-                    run_limit=args.run_limit,
+                    run_limit=unifloral_runs,
                     environment=env
                 )
 

@@ -63,6 +63,9 @@ parameters:
   pi_operator:
     value: "lcb"
 
+  beta_id:
+    value: 0.0
+
   # --- RANDOMIZED OVER --- 
   actor_lcb_penalty:
     values: [4.0, 8.0]
