@@ -59,6 +59,9 @@ parameters:
   # --- PBRL specific ---
   critic_regularizer:
     value: "pbrl"
+  # ood actions sampled
+  critic_regularizer_parameter:
+    value: 4
 
   pi_operator:
     value: "min"
