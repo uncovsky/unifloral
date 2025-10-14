@@ -66,6 +66,8 @@ class Args:
 
     # --- Environment --- 
     action_scale: float = 1.0 # Scale action space from [-1, 1]^d to [-scale, scale]^d
+    reward_scale: float = 1.0 # a
+    reward_shift: float = 0.0 # b, rewards transformed r -> a * r + b 
 
     # --- Generic optimization ---
     actor_lr: float = 1e-4
@@ -73,7 +75,6 @@ class Args:
     batch_size: int = 256
     gamma: float = 0.99
     polyak_step_size: float = 0.005
-
 
     # --- SAC-N ---
     num_critics: int = 10
@@ -92,10 +93,9 @@ class Args:
     critic_norm: str = "none" # \in {"none", "layer"}
     critic_regularizer_parameter : int = 1 # Num of sampled actions for PBRL, temp for CQL
 
-    # --- expertimental OOD filtering in PBRL ---
+    # --- experimental OOD filtering in PBRL ---
     filtering_quantile: float = 0.5 # Quantile for filtering in PBRL
     filtering_epsilon: float = 1.5 # Epsilon margin for filtering in PBRL
-
 
     # ---  Pretraining ---
     pretrain_updates : int = 0
@@ -455,7 +455,8 @@ def train(args):
     dataset = Transition(
             obs=jnp.array(dataset["observations"]),
             action=jnp.array(dataset["actions"]),
-            reward=jnp.array(dataset["rewards"]),
+            # --- Rescale rewards ---
+            reward=args.reward_scale * jnp.array(dataset["rewards"]) - args.reward_shift,
             next_obs=jnp.array(dataset["next_observations"]),
             next_action=jnp.roll(jnp.array(dataset["actions"]), -1, axis=0),
             done=jnp.array(dataset["terminals"]),
