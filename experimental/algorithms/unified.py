@@ -456,7 +456,7 @@ def train(args):
             obs=jnp.array(dataset["observations"]),
             action=jnp.array(dataset["actions"]),
             # --- Rescale rewards ---
-            reward=args.reward_scale * jnp.array(dataset["rewards"]) - args.reward_shift,
+            reward=args.reward_scale * jnp.array(dataset["rewards"]) + args.reward_shift,
             next_obs=jnp.array(dataset["next_observations"]),
             next_action=jnp.roll(jnp.array(dataset["actions"]), -1, axis=0),
             done=jnp.array(dataset["terminals"]),
