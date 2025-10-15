@@ -93,8 +93,11 @@ def wandb_sweep_from_config(config,
     config["name"] = f"{algo_name}-{timestamp}"
     sweep_id = wandb.sweep(config)
     print(f"Sweep created for {algo_name} with id: {sweep_id}, steps: {steps}")
-    wandb.agent(sweep_id, function=None, count=run_limit)
+
     # blocks until agent terminates
+    wandb.agent(sweep_id, function=None, count=run_limit)
+
+    config["name"] = algo_name  # reset name
 
 
 def sweep_folder(dirname, entity, project, run_limit=None):
