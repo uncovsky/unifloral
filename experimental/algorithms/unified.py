@@ -33,7 +33,7 @@ from infra.utils import linear_schedule, constant_schedule, \
 from infra.utils.diversity_utils import prepare_ood_dataset, \
         get_diversity_statistics, compute_qvalue_statistics, diversity_loss
 
-from infra.utils.visualization import visualize_q_vals, visualize_reach_bias
+from infra.utils.visualization import visualize_q_vals, visualize_reach_bias, visualize_hopper
 
 from infra.models.actor import TanhGaussianActor, EntropyCoef
 from infra.models.critic import VectorQ, PriorVectorQ
@@ -113,6 +113,8 @@ class Args:
 
     # --- Additional Logs ---
     diversity_logs: bool = False # Log std and disagreement
+    visualizations: bool = False # Plot Q-values in initial state
+
 
 
 
@@ -585,21 +587,16 @@ def train(args):
             }
             wandb.log(log_dict)
 
-        # --- Plot actions --- 
-        rng, rng_viz = jax.random.split(rng)
+     
 
-        # Visualizations
-        if "bandit" in args.dataset_name:
-            visualize_q_vals(args, agent_state, dataset, q_apply, actor_net.apply, rng_viz)
-        if "reach" in args.dataset_name:
-            visualize_reach_bias(args, agent_state, q_apply, actor_net.apply, rng_viz)
-
-
-
+      
     # Save final checkpoint for evaluation
     if args.checkpoint:
         ckpt_dir = create_checkpoint_dir(exp_dir)
         save_train_state(agent_state, ckpt_dir, num_evals + pretrain_evals)
+
+    if args.visualizations:
+        visualize_q_vals(args, agent_state, dataset, q_apply)
 
     # --- Evaluate final agent ---
     if args.eval_final_episodes > 0:
