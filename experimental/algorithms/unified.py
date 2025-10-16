@@ -213,7 +213,7 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset,
                     # lcb
                     q_tgt = q_values.mean(-1) - args.actor_lcb_penalty * std_q
 
-                return -q_tgt + alpha * log_pi, -log_pi, q_tgt, std_q,sampled_action
+                return -q_tgt + alpha * log_pi, -log_pi, q_tgt, std_q, sampled_action
 
             rng = jax.random.split(rng, args.batch_size)
             loss, entropy, q_target, q_std, actions = jax.vmap(_compute_loss)(rng, batch)
@@ -387,6 +387,7 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset,
             loss["edac_loss"] = diversity_loss_val
             for k, v in diversity_stats.items():
                 loss[f"diversity_{k}"] = v
+            loss["std_ratio"] = diversity_stats["uniform_q_std"] / diversity_stats["batch_q_std"]
 
         return (rng, agent_state), loss
 
