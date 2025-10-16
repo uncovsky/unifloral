@@ -29,6 +29,8 @@ parameters: # --- Experiment ---
     value: 1000
   checkpoint_dir:
     value: "./checkpoints/sacn_expert"
+  diversity_logs:
+    value: true
 
   # --- Logging ---
   log:
@@ -67,14 +69,14 @@ parameters: # --- Experiment ---
     values: 
       - "cql"
 
-  # ood actions sampled
   critic_regularizer_parameter:
-    value: 4
+    value: 1
 
   # kinda small
   critic_lagrangian:
     values:
-      - 10.0
+      - 0.1 
+      - 0.5
   ensemble_regularizer:
     value: "none"
 

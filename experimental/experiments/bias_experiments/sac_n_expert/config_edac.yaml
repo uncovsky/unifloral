@@ -30,6 +30,8 @@ parameters:
     value: 1000
   checkpoint_dir:
     value: "./checkpoints/sacn_expert"
+  diversity_logs:
+    value: true
 
   # --- Logging ---
   log:
