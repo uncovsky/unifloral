@@ -4,21 +4,20 @@ command:
   - ${args_no_boolean_flags}
 entity: ahoj
 method: grid
-name: SACN
+name: SACN_reg
 program: algorithms/unified.py
 project: sac_n-expert
 
-parameters:
-  # --- Experiment ---
+parameters: # --- Experiment ---
   seed:
-    values: [0, 1, 2]
+    value: 0
   dataset-source:
     value: d4rl
   dataset-name:
     values:
-        - hopper-expert-v2
+        - hopper-medium-v2
   algorithm:
-    value: sac-n
+    value: pbrl
 
   num_updates:
     value : 1_000_000
@@ -29,7 +28,7 @@ parameters:
   eval_final_episodes:
     value: 1000
   checkpoint_dir:
-    value: "./checkpoints/vissacn_expert"
+    value: "./checkpoints/sacn_expert"
   diversity_logs:
     value: true
   visualizations:
@@ -60,7 +59,6 @@ parameters:
   # --- SAC-N ---
   num_critics:
     value: 10
-
   pi_operator:
     values:
       - min
@@ -70,8 +68,17 @@ parameters:
     value: True
 
   critic_regularizer:
-    value: "none"
+    values: 
+      - "pbrl"
 
+  # ood actions sampled
+  critic_regularizer_parameter:
+    value: 2
+
+  # kinda small
+  critic_lagrangian:
+    values:
+      - 0.5
   ensemble_regularizer:
     value: "none"
 
