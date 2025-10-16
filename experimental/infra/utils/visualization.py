@@ -1,8 +1,120 @@
 import jax
 import jax.numpy as jnp
+import os
 import matplotlib.pyplot as plt
+import numpy as np
 
-def visualize_q_vals(args, agent_state, dataset, q_apply, actor_apply, rng):
+from mpl_toolkits.mplot3d import Axes3D
+
+latex_textwidth = 361.34999
+tex_fonts = {
+    "text.usetex": True,
+    "font.family": "serif",
+    "axes.labelsize": 10,
+    "font.size": 10,
+    "legend.fontsize": 8,
+    "xtick.labelsize": 8,
+    "ytick.labelsize": 8
+}
+plt.rcParams.update(tex_fonts)
+
+def set_size(width=latex_textwidth, fraction=1, subplots=(1, 1)):
+    """Set figure dimensions to avoid scaling in LaTeX.
+
+    Parameters
+    ----------
+    width: float or string
+            Document width in points, or string of predined document type
+    fraction: float, optional
+            Fraction of the width which you wish the figure to occupy
+    subplots: array-like, optional
+            The number of rows and columns of subplots.
+    Returns
+    -------
+    fig_dim: tuple
+            Dimensions of figure in inches
+    """
+    if width == 'thesis':
+        width_pt = 426.79135
+    elif width == 'beamer':
+        width_pt = 307.28987
+    else:
+        width_pt = width
+
+    # Width of figure (in pts)
+    fig_width_pt = width_pt * fraction
+    # Convert from pt to inches
+    inches_per_pt = 1 / 72.27
+
+    # Golden ratio to set aesthetic figure height
+    golden_ratio = (5**.5 - 1) / 2
+    # Figure width in inches
+    fig_width_in = fig_width_pt * inches_per_pt
+    # Figure height in inches
+    fig_height_in = fig_width_in * golden_ratio * (subplots[0] / subplots[1])
+
+    return (fig_width_in, fig_height_in)
+
+def visualize_hopper(args, agent_state, dataset, q_apply, actor_apply, rng):
+
+    x_bounds = (-1, 1)
+    y_bounds = (-1, 1)
+    z_bounds = (-1, 1)
+
+
+    # --- Step 2: Define grid resolution ---
+    n_per_axis = 10
+    x = jnp.linspace(*x_bounds, n_per_axis)
+    y = jnp.linspace(*y_bounds, n_per_axis)
+    z = jnp.linspace(*z_bounds, n_per_axis)
+
+    # --- Step 3: Create 3D grid of actions ---
+    X, Y, Z = jnp.meshgrid(x, y, z, indexing="ij")  # shape (n_per_axis, n_per_axis, n_per_axis)
+
+    # --- Step 4: Flatten into (N, 3) action samples ---
+    actions = jnp.stack([X.flatten(), Y.flatten(), Z.flatten()], axis=-1)  # (N, 3)
+    n_samples = actions.shape[0]
+    state = dataset.obs[0].reshape(1, -1).repeat(n_samples, axis=0)
+
+    distances = jnp.linalg.norm(dataset.obs - dataset.obs[0], axis=1)
+    top20_idx = jnp.argsort(distances)[:20]
+    matching_actions = dataset.action[top20_idx]
+    q_values = q_apply(agent_state.vec_q.params, state, actions).min(axis=-1)
+
+    name = f"sacn+{args.critic_regularizer}+lag={args.critic_lagrangian}_hopper_actions.npy"
+    os.makedirs("figures", exist_ok=True)
+    np.save(os.path.join("figures", name), np.array(q_values.reshape(n_per_axis, n_per_axis, n_per_axis)))
+
+
+
+def visualize_q_vals(args, agent_state, dataset, q_apply):
+
+    n_per_axis = 10
+    action_dim = dataset.action.shape[1]
+    print(action_dim)
+    axes = [jnp.linspace(-1, 1, n_per_axis) for _ in range(action_dim)]
+    mesh = jnp.meshgrid(*axes, indexing="ij")
+    actions = jnp.stack([m.flatten() for m in mesh], axis=-1)
+    n_samples = actions.shape[0]
+
+    close_actions = jnp.linalg.norm(dataset.action - dataset.action[0], axis=1)
+    close_actions = jnp.argsort(close_actions)[:20]
+    matching_actions = dataset.action[close_actions]
+
+    state = dataset.obs[0].reshape(1, -1).repeat(n_samples, axis=0)
+    q_values = q_apply(agent_state.vec_q.params, state, actions).min(axis=-1)
+    q_grid = q_values.reshape((n_per_axis,) * action_dim)
+
+    name = f"sacn+{args.critic_regularizer}+lag={args.critic_lagrangian}_seed={args.seed}.npy"
+    name_actions = f"sacn+{args.critic_regularizer}+lag={args.critic_lagrangian}_actions_seed={args.seed}.npy"
+
+    os.makedirs("figures", exist_ok=True)
+    np.save(os.path.join("figures", name), np.array(q_grid))
+    np.save(os.path.join("figures", name_actions), np.array(matching_actions))
+
+
+
+def visualize_bandit(args, agent_state, dataset, q_apply, actor_apply, rng):
     actions = jnp.linspace(-args.action_scale, args.action_scale, 1000).reshape(-1, 1)
 
     state = dataset.obs[0].reshape(1, -1)
@@ -48,6 +160,7 @@ def visualize_q_vals(args, agent_state, dataset, q_apply, actor_apply, rng):
     ax1.legend(loc='upper left', fontsize=14)
     plt.title("Q-values", fontsize=16)
     plt.show()
+
 
 
 def visualize_reach_bias(args, agent_state, q_apply, actor_apply, rng):
