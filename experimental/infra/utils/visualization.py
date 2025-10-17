@@ -79,11 +79,11 @@ def visualize_hopper(args, agent_state, dataset, q_apply, actor_apply, rng):
     distances = jnp.linalg.norm(dataset.obs - dataset.obs[0], axis=1)
     top20_idx = jnp.argsort(distances)[:20]
     matching_actions = dataset.action[top20_idx]
-    q_values = q_apply(agent_state.vec_q.params, state, actions).min(axis=-1)
+    q_values = q_apply(agent_state.vec_q.params, state, actions)
 
     name = f"sacn+{args.critic_regularizer}+lag={args.critic_lagrangian}_hopper_actions.npy"
     os.makedirs("figures", exist_ok=True)
-    np.save(os.path.join("figures", name), np.array(q_values.reshape(n_per_axis, n_per_axis, n_per_axis)))
+    np.save(os.path.join("figures", name), np.array(q_values.reshape(n_per_axis, n_per_axis, n_per_axis, args.num_critics)))
 
 
 
