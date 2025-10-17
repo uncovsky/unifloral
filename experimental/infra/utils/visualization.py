@@ -96,9 +96,9 @@ def visualize_q_vals(args, agent_state, dataset, q_apply):
     actions = jnp.stack([m.flatten() for m in mesh], axis=-1)
     n_samples = actions.shape[0]
 
-    close_actions = jnp.linalg.norm(dataset.action - dataset.action[0], axis=1)
-    close_actions = jnp.argsort(close_actions)[:20]
-    matching_actions = dataset.action[close_actions]
+    close_states = jnp.linalg.norm(dataset.state - dataset.state[0], axis=1)
+    close_indices = jnp.argsort(close_states)[:20]
+    matching_actions = dataset.action[close_indices]
 
     state = dataset.obs[0].reshape(1, -1).repeat(n_samples, axis=0)
     q_values = q_apply(agent_state.vec_q.params, state, actions)
