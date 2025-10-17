@@ -105,8 +105,8 @@ def visualize_q_vals(args, agent_state, dataset, q_apply):
     q_values = q_apply(agent_state.vec_q.params, state, actions).min(axis=-1)
     q_grid = q_values.reshape((n_per_axis,) * action_dim)
 
-    name = f"sacn+{args.critic_regularizer}+lag={args.critic_lagrangian}_seed={args.seed}.npy"
-    name_actions = f"sacn+{args.critic_regularizer}+lag={args.critic_lagrangian}_actions_seed={args.seed}.npy"
+    name = f"sacn+{args.critic_regularizer}+lag={args.critic_lagrangian}_seed={args.seed}_{args.dataset_name}.npy"
+    action_name = f"sacn+{args.critic_regularizer}+lag={args.critic_lagrangian}_seed={args.seed}_{args.dataset_name}_actions.npy"
 
     os.makedirs("figures", exist_ok=True)
     np.save(os.path.join("figures", name), np.array(q_grid))
