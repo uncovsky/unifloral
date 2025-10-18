@@ -6,19 +6,19 @@ entity: ahoj
 method: grid
 name: SACN_reg
 program: algorithms/unified.py
-project: sac_n-expert
+project: expert-vis
 
 parameters: # --- Experiment ---
   seed:
-    values: [0, 1, 2]
+    value: 0
   dataset-source:
     value: d4rl
   dataset-name:
     values:
         - hopper-expert-v2
+        - hopper-medium-replay-v2
   algorithm:
-    value: pbrl
-
+    value: edac
   num_updates:
     value : 1_000_000
   eval_interval:
@@ -26,11 +26,9 @@ parameters: # --- Experiment ---
   eval_workers:
     value: 8
   eval_final_episodes:
-    value: 1000
+    value: 0
   checkpoint_dir:
-    value: "./checkpoints/sacn_expert"
-  diversity_logs:
-    value: true
+    value: "./checkpoints/expertvis"
   visualizations:
     value: true
 
@@ -69,7 +67,7 @@ parameters: # --- Experiment ---
 
   critic_regularizer:
     values: 
-      - "pbrl"
+      - "none"
 
   # ood actions sampled
   critic_regularizer_parameter:
@@ -80,7 +78,11 @@ parameters: # --- Experiment ---
     values:
       - 0.5
   ensemble_regularizer:
-    value: "none"
+    value: "edac"
+
+  reg_lagrangian:
+    values:
+      - 1.0 
 
   # no extra fancy stuff
   # --- pretraining

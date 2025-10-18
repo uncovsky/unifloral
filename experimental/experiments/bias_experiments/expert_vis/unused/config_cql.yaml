@@ -15,9 +15,9 @@ parameters: # --- Experiment ---
     value: d4rl
   dataset-name:
     values:
-        - walker2d-expert-v2
+        - hopper-expert-v2
   algorithm:
-    value: sac-n
+    value: pbrl
 
   num_updates:
     value : 1_000_000
@@ -30,6 +30,8 @@ parameters: # --- Experiment ---
   checkpoint_dir:
     value: "./checkpoints/sacn_expert"
   diversity_logs:
+    value: true
+  visualizations:
     value: true
 
   # --- Logging ---
@@ -68,14 +70,9 @@ parameters: # --- Experiment ---
   critic_regularizer:
     values: 
       - "cql"
-
-  critic_regularizer_parameter:
-    value: 1
-
   # kinda small
   critic_lagrangian:
     values:
-      - 0.1 
       - 0.5
   ensemble_regularizer:
     value: "none"
