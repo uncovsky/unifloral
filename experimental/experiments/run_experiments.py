@@ -26,6 +26,7 @@ if __name__ == "__main__":
     parser.add_argument("--entity", type=str, default=None, help="Wandb entity to run the sweeps under, otherwise defaults to config value")
     parser.add_argument("--project", type=str, default=None, help="Wandb project to run the sweeps under, otherwise defaults to config value")
     parser.add_argument("--run_limit", type=int, default=None, help="Max number of runs to execute per sweep. Default None (unlimited)")
+    parser.add_argument("--folder", type=str, default=None, help="If specified, only run sweeps in this folder")
 
     args = parser.parse_args()
 
@@ -47,12 +48,23 @@ if __name__ == "__main__":
     "experiments/unified_experiments/",
     """
 
+
+    if args.folder is not None:
+        print(f"Running sweeps in {args.folder}")
+        sweep_folder(
+            args.folder,
+            entity=args.entity,
+            project=args.project,
+            run_limit=args.run_limit
+        )
+
     # All the experiments in the thesis
     experiment_folders = [
+        "experiments/bias_experiments/expert_vis",
     ]
 
     unifloral_folders = [
-        "experiments/unifloral_eval/",
+        #"experiments/unifloral_eval/",
     ]
 
     unifloral_runs = 10
@@ -84,7 +96,6 @@ if __name__ == "__main__":
                     run_limit=unifloral_runs,
                     environment=env
                 )
-
 
 
 
