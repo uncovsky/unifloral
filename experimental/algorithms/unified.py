@@ -33,7 +33,7 @@ from infra.utils import linear_schedule, constant_schedule, \
 from infra.utils.diversity_utils import prepare_ood_dataset, \
         get_diversity_statistics, compute_qvalue_statistics, diversity_loss
 
-from infra.utils.visualization import visualize_q_vals, visualize_reach_bias, visualize_hopper
+from infra.utils.visualization import visualize_q_vals
 
 from infra.models.actor import TanhGaussianActor, EntropyCoef
 from infra.models.critic import VectorQ, PriorVectorQ

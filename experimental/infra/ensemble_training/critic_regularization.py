@@ -229,41 +229,12 @@ def regularizer_factory(args, actor_apply_fn, q_apply_fn):
 
         return _loss_fn
 
-    def msg_regularizer(agent_state, rng, batch):
-
-        pi_curr = actor_apply_fn(agent_state.actor.params, batch.obs)
-
-        ood_actions, _ = pi_curr.sample_and_log_prob(seed=rng,
-                                                     sample_shape=(args.critic_regularizer_parameter,))
-
-        # [action_num, B, action_dim] -> [B, action_num, action_dim]
-        ood_actions = jnp.swapaxes(ood_actions, 0, 1)
-        states = jnp.expand_dims(batch.obs, axis=1).repeat(args.critic_regularizer_parameter, axis=1)
-
-        def _loss_fn(q_pred, critic_params, rng, batch):
-            # Get Q vals for ood actions
-            q_ood = q_apply_fn(critic_params, 
-                               states, ood_actions)
-            # [B, num_samples, E]
-            ood_mean = q_ood.mean()
-            pred_mean = q_pred.mean()
-
-            loss = ood_mean - pred_mean
-
-            # Apply lagrangian here
-            loss = args.critic_lagrangian * loss
-
-            logs = {
-                "msg_ood_q_mean": ood_mean,
-                "msg_pred_q_mean": pred_mean,
-            }
-
-            return loss, logs
-
-        return _loss_fn
-
 
     def cql_regularizer(agent_state, rng, batch):
+        """
+            CQL regularizer featuring the sample based approximation to
+            logsumexp
+        """
         rng_random, rng_pi, rng_next = jax.random.split(rng, 3)
 
         pi = actor_apply_fn(agent_state.actor.params, batch.obs)
@@ -307,6 +278,45 @@ def regularizer_factory(args, actor_apply_fn, q_apply_fn):
             return min_q_loss, logs
 
         return _loss_fn
+
+
+    def msg_regularizer(agent_state, rng, batch):
+        """
+            MSG regularizer, a version of CQL regularizer that uses current
+            policy as the sampling distribution for OOD actions.
+        """
+
+        pi_curr = actor_apply_fn(agent_state.actor.params, batch.obs)
+
+        ood_actions, _ = pi_curr.sample_and_log_prob(seed=rng,
+                                                     sample_shape=(args.critic_regularizer_parameter,))
+
+        # [action_num, B, action_dim] -> [B, action_num, action_dim]
+        ood_actions = jnp.swapaxes(ood_actions, 0, 1)
+        states = jnp.expand_dims(batch.obs, axis=1).repeat(args.critic_regularizer_parameter, axis=1)
+
+        def _loss_fn(q_pred, critic_params, rng, batch):
+            # Get Q vals for ood actions
+            q_ood = q_apply_fn(critic_params, 
+                               states, ood_actions)
+            # [B, num_samples, E]
+            ood_mean = q_ood.mean()
+            pred_mean = q_pred.mean()
+
+            loss = ood_mean - pred_mean
+
+            # Apply lagrangian here
+            loss = args.critic_lagrangian * loss
+
+            logs = {
+                "msg_ood_q_mean": ood_mean,
+                "msg_pred_q_mean": pred_mean,
+            }
+
+            return loss, logs
+
+        return _loss_fn
+
 
     def uw_cql_regularizer(agent_state, rng, batch):
 
@@ -368,6 +378,9 @@ def regularizer_factory(args, actor_apply_fn, q_apply_fn):
         return _loss_fn
 
 
+    """
+        Used to select regularizer during runtime based on passed args
+    """
     loss_dict = {
             "none": noop_loss,
             "pbrl": lambda x, y, z: pbrl_regularizer(x, y, z, filtered=False,

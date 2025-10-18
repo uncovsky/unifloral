@@ -3,7 +3,7 @@ from infra.utils.diversity_utils import prepare_ood_dataset, compute_qvalue_stat
 from infra.utils.scheduling import linear_schedule, constant_schedule, exponential_schedule, combined_schedule
 
 from infra.utils.logging import print_args
-from infra.utils.visualization import visualize_q_vals, visualize_reach_bias
+from infra.utils.visualization import visualize_q_vals
 
 
 __all__ = [

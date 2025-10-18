@@ -46,7 +46,6 @@ def prepare_ood_dataset(rng, dataset_name="walker2d-expert-v2", ood_samples=50):
                                                   dataset=dataset_name)
     data = walker_expert_wrapper.get_dataset()
     size = len(data["observations"])
-
     indices = jax.random.randint(rng, (ood_samples,), 0, size)
     ood_obs = jnp.array(data["observations"])[indices]
     ood_actions = jnp.array(data["actions"])[indices]
@@ -58,7 +57,6 @@ def compute_qvalue_statistics(q_apply_fn, agent_state, obs, actions):
     """
         Computes statistics for the q-ensemble, given a batch of s,a pairs
     """
-
     # These have shape [B,E]
     q_values = q_apply_fn(agent_state.vec_q.params, obs, actions)
 
