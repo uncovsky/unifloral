@@ -17,6 +17,7 @@ parameters:
   dataset-name:
     values:
         - walker2d-expert-v2
+        - hopper-expert-v2
   algorithm:
     value: sac-n
 
@@ -70,16 +71,11 @@ parameters:
   critic_regularizer:
     value: "none"
 
-  # ood actions sampled
-  critic_regularizer_parameter:
-    value: 4
-
   ensemble_regularizer:
     value: "edac"
 
   reg_lagrangian:
     values: 
-      - 0.1
       - 1.0
 
   # no extra fancy stuff

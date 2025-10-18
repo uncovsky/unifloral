@@ -9,14 +9,15 @@ program: algorithms/unified.py
 project: sac_n-expert
 
 parameters:
-  # --- Experiment --- 
+  # --- Experiment ---
   seed:
-    value: 0
+    values: [0, 1, 2]
   dataset-source:
     value: d4rl
   dataset-name:
     values:
-        - hopper-medium-v2
+        - walker2d-expert-v2
+        - hopper-expert-v2
   algorithm:
     value: sac-n
 
@@ -27,12 +28,10 @@ parameters:
   eval_workers:
     value: 8
   eval_final_episodes:
-    value: 0
+    value: 1000
   checkpoint_dir:
     value: "./checkpoints/vissacn_expert"
   diversity_logs:
-    value: true
-  visualizations:
     value: true
 
   # --- Logging ---
@@ -57,8 +56,9 @@ parameters:
   polyak_step_size:
     value: 0.005
 
+  # --- SAC-N ---
   num_critics:
-    value: 10
+    value: [10, 30]
 
   pi_operator:
     values:
