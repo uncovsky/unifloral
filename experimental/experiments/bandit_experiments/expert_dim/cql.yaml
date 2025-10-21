@@ -17,8 +17,8 @@ parameters:
   dataset-name:
     values: 
       - bandit_2-v0
-      - bandit_5-v0
-      - bandit_10-v0
+      - bandit_4-v0
+      - bandit_6-v0
   algorithm:
     value: sac_n
   num_updates:
