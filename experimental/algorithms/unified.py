@@ -84,7 +84,7 @@ class Args:
     # --- Policy Improvement ---
     pi_operator: str = "min" # \in {"min", lcb"}
     actor_lcb_penalty: float = 4.0 # Used if operator is lcb to penalize with std
-    entropy_bonus: bool = True # enable / disable entropy bonus
+    no_entropy_bonus: bool = False # enable / disable entropy bonus
 
     # --- Critic Regularization --- 
     critic_regularizer: str = "none" # \in {"none", "cql", "pbrl", "msg"}
@@ -179,7 +179,7 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset,
             target_entropy = -batch.action.shape[-1]
             return log_alpha * (entropy - target_entropy)
 
-        if args.entropy_bonus:
+        if not args.no_entropy_bonus:
             rng, rng_alpha = jax.random.split(rng)
             alpha_loss, alpha_grad = _alpha_loss_fn(
                     agent_state.alpha.params, rng_alpha
