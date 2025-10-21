@@ -16,9 +16,9 @@ parameters:
     value: minari
   dataset-name:
     values: 
+      - bandit_2-v0
       - bandit_5-v0
       - bandit_10-v0
-      - bandit_20-v0
   algorithm:
     value: sac_n
   num_updates:
