@@ -60,7 +60,7 @@ def collect_d_dim_data(episodes=1000, ds=[5,10,20], seeds=[0,1,2]):
     for i, d in enumerate(ds):
         seed = seeds[i % len(seeds)]
         np.random.seed(seed)
-        env = gym.make("DDimensionalBandit-v0", d=d, epsilon=0.1)
+        env = gym.make("DDimensionalBandit-v0", d=d, epsilon=0.3)
         collector = DataCollector(env)
         obs, _ = collector.reset(seed=seed)
 
@@ -79,7 +79,7 @@ def collect_d_dim_data(episodes=1000, ds=[5,10,20], seeds=[0,1,2]):
             done = False
 
             while not done:
-                a = sample_from_epsilon_ball(d, epsilon=0.1)
+                a = sample_from_epsilon_ball(d, epsilon=0.3)
                 next_obs, reward, terminated, truncated, _ = collector.step(a)
                 print(a, reward)
                 done = terminated or truncated
