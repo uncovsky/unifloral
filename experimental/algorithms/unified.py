@@ -179,19 +179,19 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset,
             target_entropy = -batch.action.shape[-1]
             return log_alpha * (entropy - target_entropy)
 
-        rng, rng_alpha = jax.random.split(rng)
-        alpha_loss, alpha_grad = _alpha_loss_fn(
-                agent_state.alpha.params, rng_alpha
-        )
-        """
-            Update alpha
-        """
-
         if args.entropy_bonus:
+            rng, rng_alpha = jax.random.split(rng)
+            alpha_loss, alpha_grad = _alpha_loss_fn(
+                    agent_state.alpha.params, rng_alpha
+            )
+            """
+                Update alpha
+            """
             updated_alpha = agent_state.alpha.apply_gradients(grads=alpha_grad)
             agent_state = agent_state._replace(alpha=updated_alpha)
             alpha = jnp.exp(alpha_apply_fn(agent_state.alpha.params))
         else:
+            alpha_loss = jnp.array(0.0)
             alpha = jnp.array(0.0)
         """
             Actor loss (Policy Improvement)
