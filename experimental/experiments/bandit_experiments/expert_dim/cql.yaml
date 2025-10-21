@@ -55,7 +55,7 @@ parameters:
     value: 0.005
   # --- SAC-N ---
   num_critics:
-    value: 2
+    value: 10
 
   # --- CQL ---
   actor_lr:
@@ -74,7 +74,7 @@ parameters:
       - "pbrl"
 
   critic_lagrangian:
-    value: 0.5
+    value: 1.0
 
   critic_norm:
     value: "none"
