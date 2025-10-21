@@ -40,8 +40,6 @@ from infra.models.critic import VectorQ, PriorVectorQ
 
 from infra.checkpoints import create_checkpoint_dir, get_experiment_dirname, save_train_state
 
-
-
 os.environ["XLA_FLAGS"] = "--xla_gpu_triton_gemm_any=True"
 
 
@@ -86,6 +84,7 @@ class Args:
     # --- Policy Improvement ---
     pi_operator: str = "min" # \in {"min", lcb"}
     actor_lcb_penalty: float = 4.0 # Used if operator is lcb to penalize with std
+    entropy_bonus: bool = True # enable / disable entropy bonus
 
     # --- Critic Regularization --- 
     critic_regularizer: str = "none" # \in {"none", "cql", "pbrl", "msg"}
@@ -187,9 +186,13 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset,
         """
             Update alpha
         """
-        updated_alpha = agent_state.alpha.apply_gradients(grads=alpha_grad)
-        agent_state = agent_state._replace(alpha=updated_alpha)
-        alpha = jnp.exp(alpha_apply_fn(agent_state.alpha.params))
+
+        if args.entropy_bonus:
+            updated_alpha = agent_state.alpha.apply_gradients(grads=alpha_grad)
+            agent_state = agent_state._replace(alpha=updated_alpha)
+            alpha = jnp.exp(alpha_apply_fn(agent_state.alpha.params))
+        else:
+            alpha = jnp.array(0.0)
         """
             Actor loss (Policy Improvement)
         """
