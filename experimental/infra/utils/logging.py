@@ -20,5 +20,8 @@ def print_args(args : object) -> None:
         print(f"Using prior functions of depth {args.randomized_prior_depth} and scale {args.randomized_prior_scale}")
     if args.pretrain_updates > 0:
         print(f"Pretraining for {args.pretrain_updates} updates with {args.pretrain_loss} loss and lagrangian {args.pretrain_lagrangian}")
+    if not args.entropy_bonus:
+        print("Not using entropy bonus for actor/critic updates")
+
     print(50 * "=")
 
