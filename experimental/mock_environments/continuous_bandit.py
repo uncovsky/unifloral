@@ -19,7 +19,6 @@ class ContinuousBandit(gym.Env):
         super().__init__()
         self.render_mode = render_mode
 
-        # state space is just one state
         self.observation_space = spaces.Box(
             low=1.0,
             high=1.0,
@@ -27,7 +26,6 @@ class ContinuousBandit(gym.Env):
             dtype=np.float32,
         )
 
-        # Action: scalar in (-1, 1)
         self.action_space = spaces.Box(
             low=np.array([-1.0], dtype=np.float32),
             high=np.array([1.0], dtype=np.float32),
@@ -49,3 +47,55 @@ class ContinuousBandit(gym.Env):
         super().reset(seed=seed)
         return self.state, {}
 
+
+class DDimensionalBandit(gym.Env):
+    """
+        Generalization to d-dimensional continuous bandit.
+
+        actions in d-dimensional epsilon ball (default eps=0.1) around origin
+        have reward +1, otherwise -1.
+    """
+
+    def __init__(self, d: int, epsilon: float = 0.1, render_mode=None):
+
+        assert d >= 1 and isinstance(d, int)
+        assert 0.0 < epsilon <= np.sqrt(d)  
+        super().__init__()
+
+        self.d = d
+        self.epsilon = float(epsilon)
+        self.render_mode = render_mode
+
+        self.observation_space = spaces.Box(
+            low=np.array([1.0], dtype=np.float32),
+            high=np.array([1.0], dtype=np.float32),
+            dtype=np.float32,
+        )
+
+        self.action_space = spaces.Box(
+            low=np.full((d,), -1.0, dtype=np.float32),
+            high=np.full((d,),  1.0, dtype=np.float32),
+            dtype=np.float32,
+        )
+
+        self.state = np.array([1.0], dtype=np.float32)
+
+    def step(self, action):
+        action = np.asarray(action, dtype=np.float32)
+        if action.shape == ():  # scalar case
+            action = action.reshape((1,))
+        action = np.clip(action, self.action_space.low, self.action_space.high)
+
+        assert self.action_space.contains(action), f"Action {action} out of bounds for shape {self.action_space.shape}"
+
+        norm = float(np.linalg.norm(action))
+        reward = 1.0 if norm < self.epsilon else -1.0
+
+        terminated = True
+        truncated = False
+        info = {"action_norm": norm}
+        return self.state, reward, terminated, truncated, info
+
+    def reset(self, seed=None, options=None):
+        super().reset(seed=seed)
+        return self.state, {}
