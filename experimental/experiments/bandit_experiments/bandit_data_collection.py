@@ -64,16 +64,8 @@ def collect_d_dim_data(episodes=1000, ds=[5,10,20], seeds=[0,1,2]):
         collector = DataCollector(env)
         obs, _ = collector.reset(seed=seed)
 
-
-        
         def sample_from_epsilon_ball(d, epsilon):
-            # random direction on the sphere
-            x = np.random.normal(0, 1, size=d)
-            x /= np.linalg.norm(x)
-
-            # random radius with correct distribution for uniform ball
-            r = epsilon * np.random.rand() ** (1.0 / d)
-            return (r * x).astype(np.float32)
+            return np.random.uniform(low=-epsilon, high=epsilon, size=d).astype(np.float32)
 
         for ep in tqdm.tqdm(range(episodes), desc=f"Collecting {d}D Bandit expert data, seed {seed}"):
             done = False

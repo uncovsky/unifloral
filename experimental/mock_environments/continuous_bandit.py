@@ -52,7 +52,7 @@ class DDimensionalBandit(gym.Env):
     """
         Generalization to d-dimensional continuous bandit.
 
-        actions in d-dimensional epsilon ball (default eps=0.1) around origin
+        actions in d-dimensional l_inf ball (default eps=0.1) around origin
         have reward +1, otherwise -1.
     """
 
@@ -88,8 +88,8 @@ class DDimensionalBandit(gym.Env):
 
         assert self.action_space.contains(action), f"Action {action} out of bounds for shape {self.action_space.shape}"
 
-        norm = float(np.linalg.norm(action))
-        reward = 1.0 if norm < self.epsilon else -1.0
+        norm = float(np.max(np.abs(action)))
+        reward = 1.0 if norm <= self.epsilon else -1.0
 
         terminated = True
         truncated = False
