@@ -16,9 +16,10 @@ parameters:
     value: minari
   dataset-name:
     values: 
-      - bandit_5-v0
       - bandit_10-v0
-      - bandit_15-v0
+      - bandit_20-v0
+      - bandit_30-v0
+      - bandit_40-v0
   algorithm:
     value: sac_n
   num_updates:
@@ -46,7 +47,7 @@ parameters:
 
   # --- Generic optimization ---
   no_entropy_bonus:
-    value: false
+    value: true
   lr:
     value: 3e-4 
   batch_size:
@@ -60,8 +61,6 @@ parameters:
     value: 10
 
   # --- CQL ---
-  actor_lr:
-    value: 0.0
   pi_operator:
     value: min
   shared_targets:

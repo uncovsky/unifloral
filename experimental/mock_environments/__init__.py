@@ -26,4 +26,10 @@ register(
     max_episode_steps=1,  # one step and then terminal
 )
 
+register(
+    id="DDimensionalBanditEasy-v0",
+    entry_point="mock_environments.continuous_bandit:DDimensionalBanditEasy",
+    max_episode_steps=1,  # one step and then terminal
+)
+
 __all__ = ["SquareReachEnv", "ContinuousBandit", "DDimensionalBandit"]

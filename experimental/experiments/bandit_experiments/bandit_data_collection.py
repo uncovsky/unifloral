@@ -56,11 +56,14 @@ def collect_bandit_data(episodes=1000, seed=0):
     )
 
 
-def collect_d_dim_data(episodes=1000, ds=[5,10,20], seeds=[0,1,2]):
+def collect_d_dim_data(episodes=1000, ds=[5,10,20], seeds=[0,1,2], easy=False):
     for i, d in enumerate(ds):
         seed = seeds[i % len(seeds)]
         np.random.seed(seed)
-        env = gym.make("DDimensionalBandit-v0", d=d, epsilon=0.5)
+        if not easy:
+            env = gym.make("DDimensionalBandit-v0", d=d, epsilon=0.5)
+        else:
+            env = gym.make("DDimensionalBanditEasy-v0", d=d, epsilon=0.5)
         collector = DataCollector(env)
         obs, _ = collector.reset(seed=seed)
 
@@ -79,11 +82,15 @@ def collect_d_dim_data(episodes=1000, ds=[5,10,20], seeds=[0,1,2]):
 
             # same state every ep
 
+        str = '' if not easy else '_easy'
+        min_score = -1 if not easy else -100
+
+
         # Create minari dataset
         collector.create_dataset(
-                dataset_id=f'bandit_{d}-v0',
+                dataset_id=f'bandit_{d}{str}-v0',
                 eval_env=env,
-                ref_min_score=-1,
+                ref_min_score=min_score,
                 ref_max_score=1,
                 algorithm_name='expert',
                 author='uncovsky',
