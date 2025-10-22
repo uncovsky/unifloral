@@ -6,7 +6,7 @@ entity: ahoj
 method: grid
 name: SACN_reg
 program: algorithms/unified.py
-project: sac_n-expert
+project: expert-vis
 
 parameters: # --- Experiment ---
   seed:
@@ -31,8 +31,6 @@ parameters: # --- Experiment ---
     value: 1000
   checkpoint_dir:
     value: "./checkpoints/sacn_expert"
-  diversity_logs:
-    value: true
 
   # --- Logging ---
   log:
