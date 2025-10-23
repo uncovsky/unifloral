@@ -381,14 +381,17 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset,
             diversity_stats = get_diversity_statistics(q_apply_fn, actor_apply_fn,
                                                        agent_state, rng_perturb,
                                                        batch.obs, batch.action)
-            # --- DIVERSITY: get info on OOD data ---
-            ood_stats = compute_qvalue_statistics(q_apply_fn,
-                                                  agent_state,
-                                                  ood_obs, 
-                                                  ood_actions)
-            # Add to logs
-            for k, v in ood_stats.items():
-                loss[f"ood_{k}"] = v
+
+            # --- DIVERSITY: get info on OOD data for locomotion datasets ---
+            if ood_obs is not None and ood_actions is not None:
+                ood_stats = compute_qvalue_statistics(q_apply_fn,
+                                                      agent_state,
+                                                      ood_obs, 
+                                                      ood_actions)
+                # Add to logs
+                for k, v in ood_stats.items():
+                    loss[f"ood_{k}"] = v
+
             loss["edac_loss"] = diversity_loss_val
             for k, v in diversity_stats.items():
                 loss[f"diversity_{k}"] = v
@@ -417,13 +420,24 @@ def train(args):
     """
         Setup OOD dataset if diversity logs are enabled
     """
-    if args.diversity_logs:
+
+    def is_locomotion_dataset(dataset_name):
+        names = ["hopper", "halfcheetah", "walker2d"]
+        return any(name in dataset_name for name in names)
+
+
+    if args.diversity_logs and is_locomotion_dataset(args.dataset_name):
 
         """
             get a different dataset, on which we will evaluate 
             ensemble diversity stats (std, disagreement)
         """
         print("Preparing OOD dataset for diversity logs...")
+
+        """
+            prepare a different dataset
+        """
+
         ood_dataset_name = args.dataset_name.split("-")[0] + "-expert-v2"
         if args.dataset_name == ood_dataset_name:
             # If expert dataset, use medium
