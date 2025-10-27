@@ -16,7 +16,7 @@ parameters:
     value: d4rl
   dataset-name:
     values: 
-      - anttmaze-medium-diverse-v2
+      - antmaze-medium-diverse-v2
       - antmaze-large-diverse-v2
   algorithm:
     value: pbrl
@@ -52,13 +52,12 @@ parameters:
   batch_size:
     value: 256
   gamma:
-    game: 0.99
+    value: 0.99
   polyak_step_size:
     value: 0.005
   critic_norm:
     values: ["layer", "none"]
 
-  # Add back the basic pbrl
   critic_regularizer:
     values:
       - "pbrl"

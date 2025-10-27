@@ -16,7 +16,7 @@ parameters:
     value: d4rl
   dataset-name:
     values: 
-      - anttmaze-medium-diverse-v2
+      - antmaze-medium-diverse-v2
       - antmaze-large-diverse-v2
   algorithm:
     value: pbrl
@@ -52,7 +52,7 @@ parameters:
   batch_size:
     value: 256
   gamma:
-    game: 0.99
+    value: 0.99
   polyak_step_size:
     value: 0.005
   critic_norm:
@@ -62,10 +62,13 @@ parameters:
     values:
       - "msg"
 
+  beta_id:
+    value: 0.0
+
   actor_lcb_penalty:
     value: 4.0
   critic_lagrangian:
-    value: [0.1, 1.0]
+    values: [0.1, 1.0]
   # --- pretraining
   pretrain_updates:
     value: 0
