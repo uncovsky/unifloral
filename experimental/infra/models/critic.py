@@ -78,11 +78,14 @@ class RandomizedPriorQNetwork(nn.Module):
 """
 class VectorQ(nn.Module):
     num_critics: int
+    depth : int
     critic_norm: str = "none"
     @nn.compact
     def __call__(self, obs, action):
         vmap_critic = nn.vmap(
-                partial(SoftQNetwork, critic_norm=self.critic_norm, learnable=True), # all learnable
+                partial(SoftQNetwork, critic_norm=self.critic_norm,
+                                      depth=self.depth,
+                                      learnable=True), # all learnable
                 variable_axes={"params": 0, "batch_stats" : 0},  # Parameters not shared between critics
                 split_rngs={"params": True, "dropout": True},  # Different initializations
                 in_axes=None,

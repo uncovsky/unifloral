@@ -498,7 +498,8 @@ def train(args):
             scale=args.randomized_prior_scale,
         )
     else:
-        q_net = VectorQ(args.num_critics, critic_norm=args.critic_norm)
+        q_net = VectorQ(args.num_critics, critic_norm=args.critic_norm,
+                        depth=args.critic_depth)
 
     alpha_net = EntropyCoef()
 
