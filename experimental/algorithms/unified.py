@@ -89,6 +89,7 @@ class Args:
     # --- Critic Regularization --- 
     critic_regularizer: str = "none" # \in {"none", "cql", "pbrl", "msg"}
     critic_lagrangian: float = 1.0
+    critic_depth: int = 3
     critic_norm: str = "none" # \in {"none", "layer"}
     critic_regularizer_parameter : int = 1 # Num of sampled actions for PBRL, temp for CQL
 
@@ -534,8 +535,6 @@ def train(args):
             "pretrain_updates must be less than or equal to total updates"
 
     pretrain_evals = args.pretrain_updates // args.eval_interval
-
-    print("Starting pretraining...")
 
     if args.pretrain_updates > 0:
         for eval_idx in tqdm.tqdm(range(pretrain_evals), desc="pretrain epochs"):
