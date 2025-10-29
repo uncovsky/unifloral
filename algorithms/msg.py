@@ -26,8 +26,8 @@ class Args:
     # --- Experiment ---
     seed: int = 0
     dataset: str = "halfcheetah-medium-v2"
-    algorithm: str = "sac_n"
-    num_updates: int = 3_000_000
+    algorithm: str = "msg"
+    num_updates: int = 1_000_000
     eval_interval: int = 2500
     eval_workers: int = 8
     eval_final_episodes: int = 1000

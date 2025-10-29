@@ -26,8 +26,8 @@ class Args:
     # --- Experiment ---
     seed: int = 0
     dataset: str = "halfcheetah-medium-v2"
-    algorithm: str = "pbrl"
-    num_updates: int = 1_000_000
+    algorithm: str = "edac"
+    num_updates: int = 3_000_000
     eval_interval: int = 2500
     eval_workers: int = 8
     eval_final_episodes: int = 1000
@@ -43,10 +43,9 @@ class Args:
     polyak_step_size: float = 0.005
     # --- SAC-N ---
     num_critics: int = 10
-    # --- PBRL ---
-    pbrl_beta_id : float = 0.01
-    pbrl_beta_ood : float = 2.0
-    pbrl_ood_actions : int = 10
+    # --- EDAC ---
+    eta: float = 1.0
+
 
 r"""
      |\  __
@@ -146,7 +145,12 @@ def eval_agent(args, rng, env, agent_state):
     cum_reward = onp.zeros(args.eval_workers)
     rng, rng_reset = jax.random.split(rng)
     rng_reset = jax.random.split(rng_reset, args.eval_workers)
-    obs = env.reset()
+
+    def _rng_to_integer_seed(rng):
+        return int(jax.random.randint(rng, (), 0, jnp.iinfo(jnp.int32).max))
+
+    seeds_reset = [_rng_to_integer_seed(rng) for rng in rng_reset]
+    obs = env.reset(seed=seeds_reset)
 
     # --- Rollout agent ---
     @jax.jit
@@ -221,6 +225,8 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset):
         agent_state = agent_state._replace(alpha=updated_alpha)
         alpha = jnp.exp(alpha_apply_fn(agent_state.alpha.params))
 
+        
+
         # --- Update actor ---
         @partial(jax.value_and_grad, has_aux=True)
         def _actor_loss_function(params, rng):
@@ -237,6 +243,7 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset):
             rng = jax.random.split(rng, args.batch_size)
             loss, entropy, q_min, q_std = jax.vmap(_compute_loss)(rng, batch)
             return loss.mean(), (entropy.mean(), q_min.mean(), q_std.mean())
+
 
         rng, rng_actor = jax.random.split(rng)
         (actor_loss, (entropy, q_min, q_std)), actor_grad = _actor_loss_function(
@@ -262,54 +269,101 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset):
             # Note: Important to use sample_and_log_prob here for numerical stability
             # See https://github.com/deepmind/distrax/issues/7
             next_action, log_next_pi = next_pi.sample_and_log_prob(seed=rng)
-
-            # Keep independent targets per critic
+            # Minimum of the target Q-values
             next_q = q_apply_fn(
                 agent_state.vec_q_target.params, transition.next_obs, next_action
             )
-            next_q_std = next_q.std(-1, keepdims=True)
-            log_probs = log_next_pi.sum(-1, keepdims=True)
-            return next_q - args.pbrl_beta_id * next_q_std - alpha * log_probs
+            return next_q.min(-1) - alpha * log_next_pi.sum(-1)
 
         rng, rng_next_v = jax.random.split(rng)
         rng_next_v = jax.random.split(rng_next_v, args.batch_size)
         next_v_target = jax.vmap(_sample_next_v)(rng_next_v, batch)
-        # Broadcast rewards and dones to match target shap
-        target = batch.reward[:, None]  + args.gamma * (1 - batch.done[:, None]) * next_v_target
-
-        def _sample_actions(rng, obs, count):
-            pi = actor_apply_fn(agent_state.actor.params, obs)
-            return pi.sample(seed=rng, sample_shape=(count,))
-
-        # --- Sample OOD actions ---
-        rng, rng_ood = jax.random.split(rng)
-        ood_rngs = jax.random.split(rng_ood, args.batch_size)
-        ood_actions = jax.vmap(_sample_actions, in_axes=(0, 0, None))(ood_rngs, batch.obs, args.pbrl_ood_actions)
+        target = batch.reward + args.gamma * (1 - batch.done) * next_v_target
 
         # --- Update critics ---
-        @jax.value_and_grad
+        @partial(jax.value_and_grad, has_aux=True)
         def _q_loss_fn(params):
-
             q_pred = q_apply_fn(params, batch.obs, batch.action)
-            q_ood_preds = jax.vmap(q_apply_fn, in_axes=(None, None, 1),
-                                   out_axes=1)(params,
-                                               batch.obs,
-                                               ood_actions)
-            critic_loss = ((q_pred - target) ** 2).sum(-1).mean()
+            value_loss = jnp.square((q_pred - jnp.expand_dims(target, -1)))
+            value_loss = value_loss.sum(-1).mean()
 
-            # Compute clipped OOD targets
-            ood_std = q_ood_preds.std(-1, keepdims=True)
-            ood_targets = jax.nn.relu(q_ood_preds - args.pbrl_beta_id * ood_std)
-            ood_targets = jax.lax.stop_gradient(ood_targets)
-            critic_loss += ((q_ood_preds - ood_targets) ** 2).sum(-1).mean()
-            return critic_loss
+            def _diversity_loss_fn(obs, action):
+                action_jac = jax.jacrev(q_apply_fn, argnums=2)(params, obs, action)
+                action_jac /= jnp.linalg.norm(action_jac, axis=-1, keepdims=True) + 1e-6
+                div_loss = action_jac @ action_jac.T
+                div_loss *= 1.0 - jnp.eye(args.num_critics)
+                return div_loss.sum()
 
-        critic_loss, critic_grad = _q_loss_fn(agent_state.vec_q.params)
+            diversity_loss = jax.vmap(_diversity_loss_fn)(batch.obs, batch.action)
+            diversity_loss = diversity_loss.mean() / (args.num_critics - 1)
+            critic_loss = value_loss + args.eta * diversity_loss
+            return critic_loss, (value_loss, diversity_loss)
+
+
+        (critic_loss, (value_loss, diversity_loss)), critic_grad = _q_loss_fn(
+            agent_state.vec_q.params
+        )
         updated_q = agent_state.vec_q.apply_gradients(grads=critic_grad)
         agent_state = agent_state._replace(vec_q=updated_q)
 
+
+        # --- Perturb Q-values, calculate conservativeness ---
+        def get_bias_estimates(rng, params, variances):
+
+            rng, rng_q = jax.random.split(rng)
+            rng_q = jax.random.split(rng_q, variances.shape[0])  # Shape: (n,)
+            
+
+            # Calculate original Q-values (batch shape: (n, ...))
+            q_pred = q_apply_fn(agent_state.vec_q.params, batch.obs, batch.action)
+
+
+            def _perturb_q_values(rng, obs, actions, noise_variance):
+                # Sample noise from [-var, var]
+                eps = jax.random.uniform(
+                    rng,
+                    shape=actions.shape,
+                    minval=-noise_variance,
+                    maxval=+noise_variance,
+                )
+
+                # Perturb and clip actions
+                perturbed_action = actions + eps
+                perturbed_action = jnp.clip(perturbed_action, -1.0, 1.0)
+
+                perturbed_q = q_apply_fn(
+                    params, obs, perturbed_action
+                )
+
+                return perturbed_q
+
+            # Broadcast variances to (n, 1) before vmap
+            variances = variances[:, None]
+
+            perturbed_q_curr = jax.vmap(
+                _perturb_q_values, in_axes=(0, None, None, 0)
+            )(rng_q, batch.obs, batch.action, variances)
+
+
+            # ood penalty (shape (var, ) mean penalty for each coeff)
+            penalty = (perturbed_q_curr.mean(-1) - perturbed_q_curr.min(-1)).mean(-1)
+
+            # calculate Q-gap between perturbed and original Q-values for each critic
+            q_gap = jnp.mean(perturbed_q_curr - jnp.expand_dims(q_pred, axis=0), axis=(1,2))
+
+            return q_gap, penalty
+
+        num_perturbations = 3
+        # Perturb actions from support
+        variances = jnp.linspace(0.1, 0.3, num_perturbations) 
+
+        # lol
+        variances_py = [0.1, 0.2, 0.3]
+        bias_estimates, penalties = get_bias_estimates(rng, agent_state.vec_q.params, variances)
         loss = {
             "critic_loss": critic_loss,
+            "value_loss": value_loss,
+            "diversity_loss": diversity_loss,
             "actor_loss": actor_loss,
             "alpha_loss": alpha_loss,
             "entropy": entropy,
@@ -317,14 +371,18 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset):
             "q_min": q_min,
             "q_std": q_std,
         }
+
+        # Add pessimism
+        for i, var in enumerate(variances_py):
+            loss[f"bias_estimate_{var}"] = bias_estimates[i].astype(float)
+            loss[f"penalty_{var}"] = penalties[i].astype(float)
+
         return (rng, agent_state), loss
 
     return _train_step
 
 
-if __name__ == "__main__":
-    # --- Parse arguments ---
-    args = tyro.cli(Args)
+def train_edac(args):
     rng = jax.random.PRNGKey(args.seed)
 
     # --- Initialize logger ---
@@ -372,6 +430,7 @@ if __name__ == "__main__":
 
     num_evals = args.num_updates // args.eval_interval
     for eval_idx in range(num_evals):
+
         # --- Execute train loop ---
         (rng, agent_state), loss = jax.lax.scan(
             _agent_train_step_fn,
@@ -403,7 +462,8 @@ if __name__ == "__main__":
         final_iters = int(onp.ceil(args.eval_final_episodes / args.eval_workers))
         print(f"Evaluating final agent for {final_iters} iterations...")
         _rng = jax.random.split(rng, final_iters)
-        rets = onp.concat([eval_agent(args, _rng, env, agent_state) for _rng in _rng])
+        rets = onp.concatenate([eval_agent(args, _rng, env, agent_state) for _rng in _rng])
+        env.close()
         scores = d4rl.get_normalized_score(args.dataset, rets) * 100.0
         agg_fn = lambda x, k: {k: x, f"{k}_mean": x.mean(), f"{k}_std": x.std()}
         info = agg_fn(rets, "final_returns") | agg_fn(scores, "final_scores")
@@ -420,3 +480,11 @@ if __name__ == "__main__":
 
     if args.log:
         wandb.finish()
+
+
+
+if __name__ == "__main__":
+    # --- Parse arguments ---
+    args = tyro.cli(Args)
+    # --- Train agent ---
+    train_edac(args)
