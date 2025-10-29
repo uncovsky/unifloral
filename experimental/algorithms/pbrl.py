@@ -87,6 +87,7 @@ class Args:
     beta_ood_exp_decay = 1.01 # Exp decay factor
     constant_beta_ood: bool = False # If enabled, we just keep beta_ood as constant
     ood_actions_sampled: int = 10
+    use_next_states : bool = False
     # ---  Pretraining ---
     pretrain_updates : int = 0
     pretrain_loss : str = "bc+sarsa"
@@ -370,7 +371,7 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset):
 
         We stick to PBRL-s two stage schedule for beta_ood
     """
-    assert args.beta_ood_start >= 1.0 
+    assert args.constant_beta_ood or args.beta_ood_start >= 1.0 
     assert args.critic_norm in {"spectral", "layer", "none"}
     assert args.beta_ood_min < 1.0
     assert args.constant_beta_ood or args.beta_linear_decay_steps < args.num_updates
