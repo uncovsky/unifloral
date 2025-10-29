@@ -634,7 +634,7 @@ def train(args):
         with open(os.path.join(final_returns_dir, filename), "wb") as f:
             onp.savez_compressed(f, **info, args=asdict(args))
         if args.log:
-            wandb.save(os.path.join("final_returns", filename))
+            wandb.save(os.path.join(final_returns_dir, filename))
 
     if args.log:
         wandb.finish()
