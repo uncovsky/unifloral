@@ -541,15 +541,18 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset):
                                             new_bs,
                                             states, ood_actions)
 
-            q_pred_ood_next, new_bs = q_apply_fn(params, 
-                                                 new_bs,
-                                                 next_states, ood_actions_next)
-
             # on current states
             ood_loss = jnp.square(q_pred_ood - ood_target_curr).sum(-1).mean()
-            # on successor states
-            ood_loss += jnp.square(q_pred_ood_next - old_target_next).sum(-1).mean()
             critic_loss += ood_loss
+
+
+            if args.use_next_states:
+                q_pred_ood_next, new_bs = q_apply_fn(params, 
+                                                     new_bs,
+                                                     next_states, ood_actions_next)
+                # on successor states
+                ood_loss += jnp.square(q_pred_ood_next - old_target_next).sum(-1).mean()
+
 
             """
                 Ensemble regularizer
