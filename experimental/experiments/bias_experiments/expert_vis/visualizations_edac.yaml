@@ -28,8 +28,10 @@ parameters: # --- Experiment ---
   eval_final_episodes:
     value: 0
   checkpoint_dir:
-    value: "./checkpoints/expertvis"
+    value: "./checkpoints/expertvis-qplot"
   visualizations:
+    value: true
+  checkpoint:
     value: true
 
   # --- Logging ---

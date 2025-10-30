@@ -31,6 +31,8 @@ parameters: # --- Experiment ---
     value: "./checkpoints/expertvis"
   visualizations:
     value: true
+  checkpoint:
+    value: true
 
   # --- Logging ---
   log:
@@ -67,7 +69,7 @@ parameters: # --- Experiment ---
 
   critic_regularizer:
     values: 
-      - "pbrl"
+      - "cql"
 
   # ood actions sampled
   critic_regularizer_parameter:
@@ -76,6 +78,7 @@ parameters: # --- Experiment ---
   # kinda small
   critic_lagrangian:
     values:
+      - 0.1
       - 0.5
   ensemble_regularizer:
     value: "none"
