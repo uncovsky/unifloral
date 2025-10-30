@@ -19,7 +19,7 @@ parameters: # --- Experiment ---
   algorithm:
     value: reg
   num_updates:
-    value : 1_000_000
+    value : 300_000
   eval_interval:
     value: 10_000
   eval_workers:
@@ -54,26 +54,20 @@ parameters: # --- Experiment ---
     value: 0.005
 
   # --- SAC-N ---
-  shared_targets:
-    value: true
-
   num_critics:
     value: 10
   pi_operator:
     values:
       - min
-
-  critic_regularizer:
-    values: 
-      - "cql"
-  # kinda small
-  critic_lagrangian:
-    values:
-      - 0.5
-      - 1.0
+  shared_targets:
+    value: true
 
   ensemble_regularizer:
-    value: "none"
+    value: "edac"
+  reg_lagrangian:
+    values: 
+      - 10.0
+      - 100.0
 
   # no extra fancy stuff
   # --- pretraining

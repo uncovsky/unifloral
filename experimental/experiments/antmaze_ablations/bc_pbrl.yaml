@@ -4,20 +4,22 @@ command:
   - ${args_no_boolean_flags}
 entity: ahoj
 method: grid
-name: independent
+name: pbrl
 program: algorithms/unified.py
-project: antmaze-collapse
+project: ablation-ant 
 
-parameters: # --- Experiment ---
+parameters:
+  # --- Experiment ---
   seed:
-    value: 0
+    values: [0, 1, 2]
   dataset-source:
     value: d4rl
   dataset-name:
-    values:
-        - antmaze-medium-diverse-v2
+    values: 
+      - antmaze-medium-diverse-v2
+      - antmaze-large-diverse-v2
   algorithm:
-    value: reg
+    value: pbrl
   num_updates:
     value : 1_000_000
   eval_interval:
@@ -25,17 +27,16 @@ parameters: # --- Experiment ---
   eval_workers:
     value: 8
   eval_final_episodes:
-    value: 0
-  checkpoint_dir:
-    value: "./checkpoints/ant"
-  diversity_logs:
-    value: true
+    value: 1000
 
   # --- Logging ---
   log:
     value: true
+  checkpoint_dir:
+    value: "./checkpoints/ablation-bc"
+
   wandb_project:
-    value: diversity_stability
+    value: eval-pbrl
   wandb_team:
     value: ahoj
   wandb_group:
@@ -52,35 +53,25 @@ parameters: # --- Experiment ---
     value: 0.99
   polyak_step_size:
     value: 0.005
-
-  # --- SAC-N ---
-  shared_targets:
-    value: true
-
-  num_critics:
-    value: 10
-  pi_operator:
-    values:
-      - min
+  critic_norm:
+    value: none
 
   critic_regularizer:
-    values: 
-      - "cql"
-  # kinda small
-  critic_lagrangian:
     values:
-      - 0.5
-      - 1.0
+      - "pbrl"
 
-  ensemble_regularizer:
-    value: "none"
+  beta_id:
+    value: 0.01
 
-  # no extra fancy stuff
+  actor_lcb_penalty:
+    value: 4.0
+
+  critic_lagrangian:
+    value: 0.01
   # --- pretraining
   pretrain_updates:
-    value: 0
+    value: 50_000
 
-  # --- RFP
-  prior:
-    values:
-      - False
+  # bc loss for actor pretrain, no critic loss
+  pretrain_loss:
+    value: "bc+none"
