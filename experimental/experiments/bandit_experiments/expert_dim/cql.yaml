@@ -11,7 +11,7 @@ project: bandit-dim
 parameters:
   # --- Experiment ---
   seed:
-    values: [0, 1, 2]
+    values: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
   dataset-source:
     value: minari
   dataset-name:
@@ -19,7 +19,6 @@ parameters:
       - bandit_10-v0
       - bandit_20-v0
       - bandit_30-v0
-      - bandit_40-v0
   algorithm:
     value: sac_n
   num_updates:
@@ -33,7 +32,7 @@ parameters:
   checkpoint:
     value: true
   checkpoint_dir:
-    value: "./checkpoints/bandit_dim"
+    value: "./checkpoints/bandit_dim-new"
 
   # --- Logging ---
   log:
