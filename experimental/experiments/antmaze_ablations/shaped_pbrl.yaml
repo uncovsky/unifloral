@@ -59,7 +59,6 @@ parameters:
   critic_regularizer:
     values:
       - "pbrl"
-
   beta_id:
     value: 0.01
 
@@ -73,3 +72,12 @@ parameters:
 
   critic_lagrangian:
     value: 0.01
+
+  # --- pretraining
+  pretrain_updates:
+    value: 50_000
+
+  # bc loss for actor pretrain, no critic loss
+  pretrain_loss:
+    value: "bc+none"
+
