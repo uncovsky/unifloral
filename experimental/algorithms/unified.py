@@ -604,7 +604,6 @@ def train(args):
             None,
             args.eval_interval,
         )
-        print(loss)
 
         # --- Evaluate agent ---
         rng, rng_eval = jax.random.split(rng)
