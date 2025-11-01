@@ -4,7 +4,7 @@ command:
   - ${args_no_boolean_flags}
 entity: ahoj
 method: random
-name: pbrl
+name: pbrl-action-filter
 program: algorithms/unified.py
 project: unifloral-eval
 
@@ -59,7 +59,9 @@ parameters:
     value: "filtered_pbrl"
   # ood actions sampled
   critic_regularizer_parameter:
-    value: 2
+    values:
+      - 2
+      - 4
 
   pi_operator:
     value: "min"
@@ -73,5 +75,5 @@ parameters:
   num_critics:
     values: [10, 30]
   filtering_quantile:
-    values: [0.05, 0.1, 0.2, 0.5]
+    values: [0.125, 0.25, 0.5]
   
