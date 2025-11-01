@@ -82,8 +82,10 @@ class Args:
     beta_id : float = 0.01 # If independent targets, controls std penalty (target - beta_id * std)
 
     # --- Policy Improvement ---
-    pi_operator: str = "min" # \in {"min", lcb"}
+    pi_operator: str = "min" # \in {"min", lcb", "awr"}
     actor_lcb_penalty: float = 4.0 # Used if operator is lcb to penalize with std
+    awr_temperature: float = 0.5 # Used if operator is awr
+    awr_advantage_clip: float = 10.0
     no_entropy_bonus: bool = False # enable / disable entropy bonus
 
     # --- Critic Regularization --- 
@@ -94,8 +96,7 @@ class Args:
     critic_regularizer_parameter : int = 1 # Num of sampled actions for PBRL, temp for CQL
 
     # --- experimental OOD filtering in PBRL ---
-    filtering_quantile: float = 0.5 # Quantile for filtering in PBRL
-    filtering_epsilon: float = 1.5 # Epsilon margin for filtering in PBRL
+    filtering_quantile: float = 0.05 # don't penalize least x% of states
 
     # ---  Pretraining ---
     pretrain_updates : int = 0
@@ -146,7 +147,7 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset,
     """
         Get regularizers for ensemble diversity and OOD critic values.
     """
-    assert args.pi_operator in ["min", "lcb"]
+    assert args.pi_operator in ["min", "lcb", "awr"]
 
     ensemble_regularizer_fn = select_regularizer(args, actor_apply_fn, q_apply_fn)
     critic_regularizer_fn = select_ood_regularizer(args, actor_apply_fn, q_apply_fn)
@@ -208,6 +209,7 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset,
                             agent_state.vec_q.params,
                             transition.obs, sampled_action
                            )
+
                 std_q = q_values.std(-1)
 
                 """
@@ -215,9 +217,26 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset,
                 """
                 if args.pi_operator == "min":
                     q_tgt = q_values.min(-1)
-                else:
-                    # lcb
+
+                elif args.pi_operator == "lcb":
                     q_tgt = q_values.mean(-1) - args.actor_lcb_penalty * std_q
+
+                else:
+                    # AWR
+                    q_pred = q_apply_fn(
+                            agent_state.vec_q.params,
+                            transition.obs, transition.action
+                    )
+
+                    # numerical stability reasons
+                    action = jnp.clip(transition.action, -1.0 + 1e-6, 1.0 - 1e-6)
+                    bc = pi.log_prob(action).sum(-1)
+
+                    adv = q_values.min(-1) - q_pred.min(-1) # Q(s,a') - Q(s, a)
+                    adv = adv / args.awr_temperature
+                    adv = jnp.clip(adv, a_min=-args.awr_advantage_clip, a_max=args.awr_advantage_clip)
+                    exp_adv = jnp.exp(adv)
+                    q_tgt = exp_adv * bc
 
                 return -q_tgt + alpha * log_pi, -log_pi, q_tgt, std_q, sampled_action
 
@@ -585,6 +604,7 @@ def train(args):
             None,
             args.eval_interval,
         )
+        print(loss)
 
         # --- Evaluate agent ---
         rng, rng_eval = jax.random.split(rng)
