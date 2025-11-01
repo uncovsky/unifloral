@@ -41,6 +41,75 @@ def regularizer_factory(args, actor_apply_fn, q_apply_fn):
 
         return _noop_loss_fn
 
+
+    def action_filtered_pbrl(agent_state, rng, batch):
+        def _sample_actions(rng, obs, count):
+            pi = actor_apply_fn(agent_state.actor.params, obs)
+            actions, _ = pi.sample_and_log_prob(seed=rng, sample_shape=(count,))
+            return actions
+
+        rng_curr, rng_unif = jax.random.split(rng, 2)
+        rngs = jax.random.split(rng_curr, args.batch_size)
+
+        # Sample K actions per state in the batch
+        ood_actions = jax.vmap(_sample_actions, in_axes=(0, 0, None))(
+            rngs, batch.obs, args.critic_regularizer_parameter
+        )
+
+        # Sample K actions uniformly
+        ood_actions_unif = jax.random.uniform(
+            rng_unif,
+            shape=(args.batch_size, args.critic_regularizer_parameter, batch.action.shape[-1]),
+            minval=-args.action_scale,
+            maxval=args.action_scale
+        )
+
+        # [B, 2K, A]
+        ood_actions = jnp.concatenate([ood_actions, ood_actions_unif], axis=1)
+
+        def _loss_fn(q_pred, critic_params, rng, batch):
+            q_ood_raw = jax.vmap(q_apply_fn, in_axes=(None, None, 1),
+                                           out_axes=1)(critic_params,
+                                                       batch.obs,
+                                                       ood_actions)
+
+            std_q_ood_raw = jnp.std(q_ood_raw, axis=-1, keepdims=True)
+
+            def _filter_penalties(q_ood, std_q_ood, quantile):
+
+                """
+                    Modifies the OOD penalty to affect only actions
+                    with high uncertainty (upper 1-quantile fraction)
+
+                """
+                quantile = jnp.quantile(std_q_ood, quantile, axis=1, keepdims=True)
+                mask = (std_q_ood >= quantile).astype(jnp.float32)
+                filtered_q_ood = q_ood * mask
+                filtered_std_q_ood = std_q_ood * mask
+
+                return filtered_q_ood, filtered_std_q_ood, jnp.sum(mask)
+
+
+            q_ood, std_q_ood, sum_mask = _filter_penalties(q_ood_raw,
+                                         std_q_ood_raw,
+                                         args.filtering_quantile)
+
+            ood_target = q_ood - args.critic_lagrangian * std_q_ood
+            ood_target = jnp.maximum(ood_target, 0.0)
+            ood_target = jax.lax.stop_gradient(ood_target)
+
+            ood_loss = jnp.square(q_ood - ood_target).sum() / ( sum_mask )
+            logs = {
+                "pbrl_ood_q_mean": q_ood_raw.mean(),
+                "states_actions_penalized": sum_mask,
+                "pbrl_ood_q_std_mean": std_q_ood_raw.mean(),
+                "pbrl_ood_q_target_mean": ood_target.mean(),
+            }
+
+            return ood_loss, logs
+
+        return _loss_fn
+
     def filtered_pbrl(agent_state, rng, batch):
 
         def _sample_actions(rng, obs, count):
@@ -351,6 +420,7 @@ def regularizer_factory(args, actor_apply_fn, q_apply_fn):
             "none": noop_loss,
             "pbrl": lambda x, y, z: pbrl_regularizer(x, y, z, use_next_states=False),
             "filtered_pbrl": filtered_pbrl,
+            "action_filtered_pbrl": action_filtered_pbrl,
             "msg": msg_regularizer,
             "cql": cql_regularizer,
             "uw_cql": uw_cql_regularizer,
