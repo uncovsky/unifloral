@@ -36,8 +36,7 @@ from infra.utils.diversity_utils import prepare_ood_dataset, \
 from infra.utils.visualization import visualize_q_vals
 
 from infra.models.actor import TanhGaussianActor, EntropyCoef
-from infra.models.critic import VectorQ, PriorVectorQ
-
+from infra.models.critic import VectorQ, PriorVectorQ, VectorV
 from infra.checkpoints import create_checkpoint_dir, get_experiment_dirname, save_train_state
 
 os.environ["XLA_FLAGS"] = "--xla_gpu_triton_gemm_any=True"
@@ -84,9 +83,16 @@ class Args:
     # --- Policy Improvement ---
     pi_operator: str = "min" # \in {"min", lcb", "awr"}
     actor_lcb_penalty: float = 4.0 # Used if operator is lcb to penalize with std
-    awr_temperature: float = 0.5 # Used if operator is awr
-    awr_advantage_clip: float = 10.0
     no_entropy_bonus: bool = False # enable / disable entropy bonus
+
+    # --- AWR hyperparameters ---
+    awr_operator: str = "min" # \in {"min","lcb"}
+    awr_temperature: float = 1.0  # implicit KL lagrangian
+    awr_advantage_clip: float = 10.0 # clip advantage weights
+    awr_softmax: bool = True # whether to use softmax weights in AWR
+    use_value_net: bool = False # whether to use a IQL value network per critic
+    iql_tau: float = 0.7 # expectile tau for IQL value loss
+
 
     # --- Critic Regularization --- 
     critic_regularizer: str = "none" # \in {"none", "cql", "pbrl", "msg"}
@@ -117,14 +123,11 @@ class Args:
     visualizations: bool = False # Plot Q-values in initial state
 
 
-
-
-
 """
     Training state and training step
 """
 
-AgentTrainState = namedtuple("AgentTrainState", "actor vec_q vec_q_target alpha pretrain_lag train_step")
+AgentTrainState = namedtuple("AgentTrainState", "actor vec_q vec_q_target alpha pretrain_lag vec_v train_step")
 Transition = namedtuple("Transition", "obs action reward next_obs next_action done")
 
 
@@ -136,8 +139,8 @@ def create_train_state(args, rng, network, dummy_input, lr=None):
         )
 
 
-def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset,
-                    ood_obs=None, ood_actions=None):
+def make_train_step(args, actor_apply_fn, q_apply_fn, v_apply_fn, alpha_apply_fn, 
+                    dataset, ood_obs=None, ood_actions=None):
     """
     Make JIT-compatible agent train step.
 
@@ -182,21 +185,43 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset,
             return log_alpha * (entropy - target_entropy)
 
         if not args.no_entropy_bonus:
+            """
+                Update alpha
+            """
             rng, rng_alpha = jax.random.split(rng)
             alpha_loss, alpha_grad = _alpha_loss_fn(
                     agent_state.alpha.params, rng_alpha
             )
-            """
-                Update alpha
-            """
             updated_alpha = agent_state.alpha.apply_gradients(grads=alpha_grad)
             agent_state = agent_state._replace(alpha=updated_alpha)
             alpha = jnp.exp(alpha_apply_fn(agent_state.alpha.params))
         else:
             alpha_loss = jnp.array(0.0)
             alpha = jnp.array(0.0)
+
+
         """
-            Actor loss (Policy Improvement)
+            Update value network if it is used
+        """
+        if args.use_value_net:
+            q_pred = q_apply_fn(agent_state.vec_q.params, batch.obs, batch.action)
+            @partial(jax.value_and_grad, has_aux=True)
+            def _value_loss_fn(params):
+                adv = q_pred - v_apply_fn(params, batch.obs)
+                # Asymmetric L2 loss
+                value_loss = jnp.abs(args.iql_tau - (adv < 0.0).astype(float)) * (adv**2)
+                return jnp.mean(value_loss), adv
+
+            (value_loss, adv), value_grad = _value_loss_fn(agent_state.vec_v.params)
+            agent_state = agent_state._replace(
+                vec_v=agent_state.vec_v.apply_gradients(grads=value_grad),
+            )
+        else:
+            value_loss = jnp.array(0.0)
+            adv = jnp.array(0.0)
+
+        """
+            SAC Actor loss (Policy Improvement)
         """
         @partial(jax.value_and_grad, has_aux=True)
         def _actor_loss_function(params, rng):
@@ -221,23 +246,6 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset,
                 elif args.pi_operator == "lcb":
                     q_tgt = q_values.mean(-1) - args.actor_lcb_penalty * std_q
 
-                else:
-                    # AWR
-                    q_pred = q_apply_fn(
-                            agent_state.vec_q.params,
-                            transition.obs, transition.action
-                    )
-
-                    # numerical stability reasons
-                    action = jnp.clip(transition.action, -1.0 + 1e-6, 1.0 - 1e-6)
-                    bc = pi.log_prob(action).sum(-1)
-
-                    adv = q_values.min(-1) - q_pred.min(-1) # Q(s,a') - Q(s, a)
-                    adv = adv / args.awr_temperature
-                    adv = jnp.clip(adv, a_min=-args.awr_advantage_clip, a_max=args.awr_advantage_clip)
-                    exp_adv = jnp.exp(adv)
-                    q_tgt = exp_adv * bc
-
                 return -q_tgt + alpha * log_pi, -log_pi, q_tgt, std_q, sampled_action
 
             rng = jax.random.split(rng, args.batch_size)
@@ -247,41 +255,116 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset,
             return loss.mean(), (entropy.mean(), q_target.mean(), q_target.std(), mean_dist) 
 
         """
+            AWR Actor loss (Policy Improvement)
+        """
+        @partial(jax.value_and_grad, has_aux=True)
+        def _awr_loss_function(params, rng):
+
+            pi = actor_apply_fn(params, batch.obs)
+            actions, log_pi = pi.sample_and_log_prob(seed=rng)
+            log_pi = log_pi.sum(-1)
+            q_pred = q_apply_fn(
+                    agent_state.vec_q.params,
+                    batch.obs, batch.action
+            )
+
+            # cLip actions to avoid NaNs in log prob (distrax issue)
+            action = jnp.clip(batch.action, -1.0 + 1e-7, 1.0 - 1e-7)
+            bc = pi.log_prob(action).sum(-1)
+
+            """
+                Either we compute value baseline via the network,
+                or one-sample AWAC-style estimate
+            """
+            if args.use_value_net:
+                baseline = v_apply_fn(agent_state.vec_v.params, batch.obs)
+
+            else:
+                q_values = q_apply_fn(
+                        agent_state.vec_q.params,
+                        batch.obs, actions
+                )
+                baseline = q_values
+
+            """
+                Reduce the estimates based on predefined rule
+            """
+            adv = q_pred - baseline
+            if args.awr_operator == "min":
+                adv = adv.min(-1)
+            else:
+                std_adv = adv.std(-1)
+                adv = adv.mean(-1) - args.actor_lcb_penalty * std_adv
+
+            """
+                Clip the advantage estimates
+            """
+            adv = jnp.clip(adv, a_min=-args.awr_advantage_clip, a_max=args.awr_advantage_clip)
+            adv = adv / args.awr_temperature
+
+            if args.awr_softmax:
+                weights = jax.nn.softmax(adv)
+            else:
+                # standard AWR weights, additionally clip to 100
+                weights = jnp.exp(adv).clip(max=100.0)
+
+            # Weighted BC loss
+            loss = -(weights * bc).mean() + alpha * log_pi.mean()
+            mean_dist = jnp.square(actions - batch.action).mean()
+            return loss, (-log_pi.mean(), baseline.mean(), baseline.std(), mean_dist)
+
+        """
             Update actor
         """
         rng, rng_actor = jax.random.split(rng)
-        (actor_loss, (entropy, q_mean, q_std, mean_dist)), actor_grad = (
-                _actor_loss_function(agent_state.actor.params, rng_actor)
+        if args.pi_operator == "awr":
+            (actor_loss, (entropy, q_mean, q_std, mean_dist)), actor_grad = (
+                _awr_loss_function(agent_state.actor.params, rng_actor)
                 )
+        else:
+            (actor_loss, (entropy, q_mean, q_std, mean_dist)), actor_grad = (
+                    _actor_loss_function(agent_state.actor.params, rng_actor)
+                    )
 
         updated_actor = agent_state.actor.apply_gradients(grads=actor_grad)
         agent_state = agent_state._replace(actor=updated_actor)
 
-        """
-            Compute TD targets
-        """
-        rng_next, rng = jax.random.split(rng, 2)
-        next_pis = actor_apply_fn(agent_state.actor.params, batch.next_obs)
-        bootstrap_actions, logprobs_next = next_pis.sample_and_log_prob(seed=rng_next)
-        logprobs_next = logprobs_next.sum(-1, keepdims=True)
 
-        # --- Bootstrap actions with target nets ---
-        next_q = q_apply_fn(agent_state.vec_q_target.params, 
-                            batch.next_obs, 
-                            bootstrap_actions)
         """
             Evaluate PE operator
 
             construct bootstrap for each critic Q_i
         """
-        if args.shared_targets:
-            # [B, E] -> [B, 1] target, later broadcast to [B,E] predictions
-            next_v_target = next_q.min(-1, keepdims=True) - alpha * logprobs_next
+        if args.use_value_net:
+
+            """
+            Compute TD targets using value network
+            """
+            next_v_target = v_apply_fn(agent_state.vec_v.params, batch.next_obs)
 
         else:
-            # [B,E] target Q_i'(s',a') - alpha * log pi(a'|s') - beta_id * std_i(Q_J(s',a'))
-            std_q_next = next_q.std(-1, keepdims=True)
-            next_v_target = next_q - alpha * logprobs_next - args.beta_id * std_q_next
+            """
+                Compute TD targets by bootstrapping
+            """
+            rng_next, rng = jax.random.split(rng, 2)
+            next_pis = actor_apply_fn(agent_state.actor.params, batch.next_obs)
+            bootstrap_actions, logprobs_next = next_pis.sample_and_log_prob(seed=rng_next)
+            logprobs_next = logprobs_next.sum(-1, keepdims=True)
+            # --- Bootstrap actions with target nets ---
+            next_q = q_apply_fn(agent_state.vec_q_target.params, 
+                                batch.next_obs, 
+                                bootstrap_actions)
+            if args.shared_targets:
+                next_q = q_apply_fn(agent_state.vec_q_target.params, 
+                                    batch.next_obs, 
+                                    bootstrap_actions)
+                # [B, E] -> [B, 1] target, later broadcast to [B,E] predictions
+                next_v_target = next_q.min(-1, keepdims=True) - alpha * logprobs_next
+
+            else:
+                # [B,E] target Q_i'(s',a') - alpha * log pi(a'|s') - beta_id * std_i(Q_J(s',a'))
+                std_q_next = next_q.std(-1, keepdims=True)
+                next_v_target = next_q - alpha * logprobs_next - args.beta_id * std_q_next
 
 
         """
@@ -377,6 +460,8 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset,
                     "entropy": entropy,
                     "alpha": alpha,
                     "actor_q_mean": q_mean,
+                    "value_loss": value_loss,
+                    "adv_mean": adv.mean(),
                     "actor_q_std": q_std,
                     "q_pred_mean" : q_pred_mean,
                     "q_pred_std": q_pred_std,
@@ -520,13 +605,19 @@ def train(args):
         q_net = VectorQ(args.num_critics, critic_norm=args.critic_norm,
                         depth=args.critic_depth)
 
+
+    if args.use_value_net:
+        v_net = VectorV(args.num_critics)
+    else:
+        v_net = VectorV(1)  # Dummy value net, not used
     alpha_net = EntropyCoef()
 
     # Target networks share seeds to match initialization
-    rng, rng_actor, rng_q, rng_alpha, rng_lag = jax.random.split(rng, 5)
+    rng, rng_actor, rng_q, rng_v, rng_alpha, rng_lag = jax.random.split(rng, 6)
     agent_state = AgentTrainState(
         actor=create_train_state(args, rng_actor, actor_net, [dummy_obs], args.actor_lr),
         vec_q=create_train_state(args, rng_q, q_net, [dummy_obs, dummy_action]),
+        vec_v = create_train_state(args, rng_v, v_net, [dummy_obs]),
         vec_q_target=create_train_state(args, rng_q, q_net, [dummy_obs, dummy_action]),
         alpha=create_train_state(args, rng_alpha, alpha_net, []),
         pretrain_lag=jnp.full((), args.pretrain_lagrangian, dtype=jnp.float32),
@@ -538,7 +629,7 @@ def train(args):
 
     # --- Make train step ---
     _agent_train_step_fn = make_train_step(
-        args, actor_net.apply, q_apply, alpha_net.apply, dataset, 
+        args, actor_net.apply, q_apply, v_net.apply, alpha_net.apply, dataset, 
         ood_obs=ood_obs, ood_actions=ood_actions
     )
 

@@ -1,7 +1,8 @@
 from infra.ensemble_training import select_regularizer, make_pretrain_step, select_ood_regularizer
 from infra.dataset import OfflineDatasetWrapper
 from infra.utils import *
-from infra.models import TanhGaussianActor, EntropyCoef, PriorVectorQ, VectorQ
+from infra.models import TanhGaussianActor, EntropyCoef, PriorVectorQ,\
+                         VectorQ, VectorV
 
 __all__ = [
     "OfflineDatasetWrapper",
@@ -9,6 +10,7 @@ __all__ = [
     "EntropyCoef",
     "PriorVectorQ",
     "VectorQ",
+    "VectorV",
     "select_regularizer",
     "select_ood_regularizer",
     "make_pretrain_step",

@@ -119,3 +119,32 @@ class PriorVectorQ(nn.Module):
         return q_values
 
 
+"""
+    State value function network.
+"""
+class StateValueFunction(nn.Module):
+    @nn.compact
+    def __call__(self, x):
+        for _ in range(2):
+            x = nn.Dense(256)(x)
+            x = nn.relu(x)
+        v = nn.Dense(1)(x)
+        return v.squeeze(-1)
+
+"""
+    Vectorized wrapper over state value function ensemble.
+"""
+class VectorV(nn.Module):
+    num_values: int
+    @nn.compact
+    def __call__(self, x):
+        vmap_value = nn.vmap(
+                StateValueFunction,
+                variable_axes={"params": 0, "batch_stats" : 0},  # Parameters not shared between values
+                split_rngs={"params": True, "dropout": True},  # Different initializations
+                in_axes=None,
+                out_axes=-1,
+                axis_size=self.num_values,
+        )
+        v_values = vmap_value()(x)
+        return v_values

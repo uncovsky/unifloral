@@ -23,5 +23,9 @@ def print_args(args : object) -> None:
     if args.no_entropy_bonus:
         print("Not using entropy bonus for actor/critic updates")
 
+    if args.use_value_net:
+        print(f"Using a separate value net for bootstrap, w. iql tau {args.iql_tau}")
+
+
     print(50 * "=")
 

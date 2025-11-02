@@ -1,5 +1,5 @@
 from infra.models.actor import TanhGaussianActor, EntropyCoef
-from infra.models.critic import PriorVectorQ, VectorQ
+from infra.models.critic import PriorVectorQ, VectorQ, VectorV
 
 
 __all__ = [
@@ -7,5 +7,6 @@ __all__ = [
     "EntropyCoef",
     "PriorVectorQ",
     "VectorQ",
+    "VectorV",
 ]
 
