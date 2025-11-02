@@ -1,0 +1,83 @@
+command:
+  - python3
+  - ${program}
+  - ${args_no_boolean_flags}
+entity: ahoj
+method: grid
+name: pbrl
+program: algorithms/unified.py
+project: iql-prelims
+
+parameters:
+  # --- Experiment ---
+  seed:
+    values: [0, 1, 2]
+  dataset-source:
+    value: d4rl
+  dataset-name:
+    values: 
+      - hopper-medium-v2
+      - halfcheetah-medium-expert-v2
+      - walker2d-medium-replay-v2
+      - antmaze-medium-diverse-v2 # changed to smaller maze
+      - pen-human-v1
+      - pen-cloned-v1
+      - pen-expert-v1
+      - maze2d-large-v1
+      - kitchen-mixed-v0
+  algorithm:
+    value: pbrl
+  num_updates:
+    value : 1_000_000
+  eval_interval:
+    value: 10_000
+  eval_workers:
+    value: 8
+  eval_final_episodes:
+    value: 1000
+
+  # --- Logging ---
+  log:
+    value: true
+  checkpoint_dir:
+    value: "./checkpoints/iql-prelims"
+  checkpoint:
+    value: false
+  # --- Generic optimization ---
+  lr:
+    value: 3e-4
+  actor_lr:
+    value: 1e-4
+  batch_size:
+    value: 256
+  gamma:
+    value: 0.99
+  polyak_step_size:
+    value: 0.005
+
+  # --- PBRL specific ---
+  critic_regularizer:
+    values: 
+      - "none"
+  awr_operator:
+    values:
+      - "min"
+      - "lcb"
+  actor_lcb_penalty:
+    values:
+      - 0.0
+
+  use_value_net:
+    value: true
+
+  pi_operator:
+    value: "awr"
+
+  awr_temperature:
+    value: 0.33
+  num_critics:
+    value: 10
+
+
+
+  
