@@ -125,17 +125,6 @@ def regularizer_factory(args, actor_apply_fn, q_apply_fn):
             rngs, batch.obs, args.critic_regularizer_parameter
         )
 
-        # Sample K actions uniformly
-        ood_actions_unif = jax.random.uniform(
-            rng_unif,
-            shape=(args.batch_size, args.critic_regularizer_parameter, batch.action.shape[-1]),
-            minval=-args.action_scale,
-            maxval=args.action_scale
-        )
-
-        # [B, 2K, A]
-        ood_actions = jnp.concatenate([ood_actions, ood_actions_unif], axis=1)
-
         def _loss_fn(q_pred, critic_params, rng, batch):
             q_ood_raw = jax.vmap(q_apply_fn, in_axes=(None, None, 1),
                                            out_axes=1)(critic_params,
@@ -165,7 +154,6 @@ def regularizer_factory(args, actor_apply_fn, q_apply_fn):
 
                 return filtered_q_ood, filtered_std_q_ood, jnp.sum(mask)
 
-
             q_ood, std_q_ood, sum_mask = _filter_penalties(q_ood_raw,
                                          std_q_ood_raw,
                                          args.filtering_quantile)
@@ -173,6 +161,7 @@ def regularizer_factory(args, actor_apply_fn, q_apply_fn):
             ood_target = q_ood - args.critic_lagrangian * std_q_ood
             ood_target = jnp.maximum(ood_target, 0.0)
             ood_target = jax.lax.stop_gradient(ood_target)
+            print(q_ood, ood_target)
 
             # Take sum over ensemble dimension, mean over actions and 1/sum_mask over states
             ood_loss = jnp.square(q_ood - ood_target).sum(axis=-1).mean(axis=-1).sum() / ( sum_mask )

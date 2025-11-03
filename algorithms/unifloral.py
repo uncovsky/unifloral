@@ -83,6 +83,7 @@ class Args:
     policy_noise: float = 0.2  # Noise added to target actions
     noise_clip: float = 0.5  # Target policy noise limits
     use_target_actor: bool = True  # Whether to use actor target network
+    use_shared_targets: bool = True # whether to calculate same targets for all critics
     # --- Value function ---
     use_value_target: bool = False  # Whether to use separate value network for targets
     value_expectile: float = 0.7  # Expectile regression coefficient
@@ -282,7 +283,7 @@ def eval_agent(args, rng, env, agent_state):
 def sample_from_buffer(buffer, batch_size, rng):
     """Sample a batch from the buffer."""
     idxs = jax.random.randint(rng, (batch_size,), 0, len(buffer.obs))
-    return jax.tree_map(lambda x: x[idxs], buffer)
+    return jax.tree.map(lambda x: x[idxs], buffer)
 
 
 r"""
@@ -331,7 +332,7 @@ def make_train_step(
         if args.dataset_sample_ratio < 1.0:
             rollout_size = args.batch_size - dataset_size
             rollout_batch = sample_from_buffer(rollout_buffer, rollout_size, rng_roll)
-            batch = jax.tree_map(
+            batch = jax.tree.map(
                 lambda x, y: jnp.concatenate([x, y]), batch, rollout_batch
             )
         losses = {}
@@ -423,7 +424,7 @@ def make_train_step(
             if args.use_entropy_loss:
                 ent_coef = args.actor_entropy_coef * alpha
                 losses["actor_loss"] += ent_coef * losses["entropy_loss"]
-            losses = jax.tree_map(jnp.mean, losses)
+            losses = jax.tree.map(jnp.mean, losses)
             return losses["actor_loss"], losses
 
         rng, rng_actor = jax.random.split(rng)
@@ -456,17 +457,26 @@ def make_train_step(
                     next_v = value_apply_fn(agent_state.value.params, next_obs)
                 else:
                     q_target_params = agent_state.vec_q_target.params
-                    next_v = q_apply_fn(q_target_params, next_obs, next_action).min()
+                    next_v = q_apply_fn(q_target_params, next_obs, next_action)
+                    if args.use_shared_targets:
+                        next_v = next_v.min(-1)
                 losses = {"critic_next_v": next_v}
                 if args.use_entropy_loss:
-                    next_v += args.critic_entropy_coef * alpha * log_next_pi.sum()
+                    entropy_bonus = args.critic_entropy_coef * alpha * log_next_pi.sum()
+                    if not args.use_shared_targets:
+                        entropy_bonus = jnp.expand_dims(entropy_bonus, -1)
+                    next_v -= entropy_bonus
+
                     losses["critic_entropy_loss"] = log_next_pi.sum()
                 if args.critic_bc_coef > 0.0:
                     bc_loss = jnp.square(next_action - transition.next_action).sum()
                     losses["critic_bc_loss"] = bc_loss
                     next_v -= args.critic_bc_coef * bc_loss
-                next_v *= (1.0 - transition.done) * args.gamma
-                return transition.reward + next_v, losses
+                
+                dones = jnp.expand_dims(transition.done, -1) if not args.use_shared_targets else transition.done 
+                rewards = jnp.expand_dims(transition.reward, -1) if not args.use_shared_targets else transition.reward
+                next_v *= (1.0 - dones) * args.gamma
+                return rewards + next_v, losses
 
             rng, rng_targets = jax.random.split(rng)
             rng_targets = jax.random.split(rng_targets, args.batch_size)
@@ -483,7 +493,7 @@ def make_train_step(
                     return div_loss.sum()
 
                 q_pred = q_apply_fn(params, batch.obs, batch.action)
-                q_diff = q_pred - targets.reshape(args.batch_size, 1)
+                q_diff = q_pred - targets
                 losses = {"critic_loss": jnp.square(q_diff).sum(-1).mean()}
                 if args.diversity_coef > 0.0:
                     batch_div_fn = jax.vmap(_diversity_loss_fn)
@@ -506,7 +516,7 @@ def make_train_step(
             None,
             length=args.num_critic_updates_per_step,
         )
-        losses.update(jax.tree_map(jnp.mean, critic_losses))  # Average across updates
+        losses.update(jax.tree.map(jnp.mean, critic_losses))  # Average across updates
 
         # --- Update value function ---
         if args.use_awr or args.use_value_target:
@@ -540,7 +550,7 @@ def make_train_step(
             new_pi_target = _update_target(agent_state.actor, agent_state.actor_target)
             agent_state = agent_state._replace(actor_target=new_pi_target)
 
-        return (rng, agent_state, rollout_buffer), jax.tree_map(jnp.mean, losses)
+        return (rng, agent_state, rollout_buffer), jax.tree.map(jnp.mean, losses)
 
     return _train_step
 
@@ -574,8 +584,8 @@ if __name__ == "__main__":
 
     # --- Initialize networks ---
     num_actions = env.single_action_space.shape[0]
-    data_mean = jax.tree_map(lambda x: jnp.mean(x, axis=0), dataset)
-    data_std = jax.tree_map(lambda x: jnp.std(x, axis=0), dataset)
+    data_mean = jax.tree.map(lambda x: jnp.mean(x, axis=0), dataset)
+    data_std = jax.tree.map(lambda x: jnp.std(x, axis=0), dataset)
     dummy_obs = jnp.zeros(env.single_observation_space.shape)
     dummy_action = jnp.zeros(num_actions)
     actor_net = Actor(
@@ -627,7 +637,7 @@ if __name__ == "__main__":
         dynamics_model.dataset = dataset
         max_buffer_size = args.rollout_batch_size * args.rollout_length
         max_buffer_size *= args.model_retain_epochs
-        rollout_buffer = jax.tree_map(
+        rollout_buffer = jax.tree.map(
             lambda x: jnp.zeros((max_buffer_size, *x.shape[1:])),
             dataset,
         )
@@ -680,7 +690,7 @@ if __name__ == "__main__":
         final_iters = int(onp.ceil(args.eval_final_episodes / args.eval_workers))
         print(f"Evaluating final agent for {final_iters} iterations...")
         _rng = jax.random.split(rng, final_iters)
-        rets = onp.concat([eval_agent(args, _rng, env, agent_state) for _rng in _rng])
+        rets = onp.concatenate([eval_agent(args, _rng, env, agent_state) for _rng in _rng])
         scores = d4rl.get_normalized_score(args.dataset, rets) * 100.0
         agg_fn = lambda x, k: {k: x, f"{k}_mean": x.mean(), f"{k}_std": x.std()}
         info = agg_fn(rets, "final_returns") | agg_fn(scores, "final_scores")
