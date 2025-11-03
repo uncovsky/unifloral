@@ -1,0 +1,69 @@
+command:
+  - python3
+  - ${program}
+  - ${args_no_boolean_flags}
+entity: ahoj
+method: grid
+name: pbrl
+program: algorithms/unified.py
+project: ensemble_ablation
+
+parameters:
+  # --- Experiment ---
+  seed:
+    values: [0, 1, 2, 3, 4]
+  dataset-source:
+    value: d4rl
+  dataset-name:
+    values: 
+      - pen-cloned-v1
+  algorithm:
+    value: pbrl
+  num_updates:
+    value : 1_000_000
+  eval_interval:
+    value: 10_000
+  eval_workers:
+    value: 8
+  eval_final_episodes:
+    value: 1000
+
+  # --- Logging ---
+  log:
+    value: true
+  checkpoint_dir:
+    value: "./checkpoints/ens_ablation"
+  checkpoint:
+    value: false
+  # --- Generic optimization ---
+  lr:
+    value: 3e-4
+  actor_lr:
+    value: 1e-4
+  batch_size:
+    value: 256
+  gamma:
+    value: 0.99
+  polyak_step_size:
+    value: 0.005
+
+
+  # --- PBRL specific ---
+  critic_regularizer:
+    value: "pbrl"
+  # ood actions sampled
+  critic_regularizer_parameter:
+    value: 4
+
+  pi_operator:
+    value: "min"
+
+  beta_id:
+    value: 0.0001
+
+  # --- RANDOMIZED OVER --- 
+  critic_lagrangian:
+    value: 0.01
+  num_critics:
+    values: [30, 50]
+  
