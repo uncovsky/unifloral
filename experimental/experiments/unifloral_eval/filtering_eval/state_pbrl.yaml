@@ -4,9 +4,9 @@ command:
   - ${args_no_boolean_flags}
 entity: ahoj
 method: random
-name: pbrl
+name: pbrl-state-filter
 program: algorithms/unified.py
-project: unifloral-eval
+project: filter-eval
 
 parameters:
   # --- Experiment ---
@@ -40,7 +40,7 @@ parameters:
   log:
     value: true
   checkpoint_dir:
-    value: "./checkpoints/pbrl_eval"
+    value: "./checkpoints/pbrl_filtering_eval"
   checkpoint:
     value: false
   # --- Generic optimization ---
@@ -54,11 +54,9 @@ parameters:
     value: 0.99
   polyak_step_size:
     value: 0.005
-
-
   # --- PBRL specific ---
   critic_regularizer:
-    value: "pbrl"
+    value: "filtered_pbrl"
   # ood actions sampled
   critic_regularizer_parameter:
     value: 4
@@ -74,4 +72,6 @@ parameters:
     values: [0.01, 0.1, 1.0, 2.0]
   num_critics:
     values: [10, 30]
+  filtering_quantile:
+    values: [0.05, 0.1, 0.2, 0.5]
   
