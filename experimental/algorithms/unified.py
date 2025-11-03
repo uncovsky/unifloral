@@ -289,12 +289,11 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, v_apply_fn, alpha_apply_fn
             """
                 Reduce the estimates based on predefined rule
             """
-            adv = q_pred - baseline
             if args.awr_operator == "min":
-                adv = adv.min(-1)
+                adv = q_pred.min(-1) - baseline.min(-1)
             else:
-                std_adv = adv.std(-1)
-                adv = adv.mean(-1) - args.actor_lcb_penalty * std_adv
+                adv = q_pred.mean(-1) - baseline.mean(-1)
+
 
             """
                 Clip the advantage estimates
@@ -307,6 +306,8 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, v_apply_fn, alpha_apply_fn
             else:
                 # standard AWR weights, additionally clip to 100
                 weights = jnp.exp(adv).clip(max=100.0)
+
+            weights = jax.lax.stop_gradient(weights)
 
             # Weighted BC loss
             loss = -(weights * bc).mean() + alpha * log_pi.mean()
