@@ -4,7 +4,7 @@ command:
   - ${program}
   - ${args_no_boolean_flags}
 entity: ahoj
-method: random
+method: grid
 name: msg
 program: algorithms/unified.py
 project: ensemble_ablation
