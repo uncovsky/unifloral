@@ -6,11 +6,11 @@ entity: ahoj
 method: grid
 name: independent
 program: algorithms/unified.py
-project: antmaze-collapse
+project: antmaze-bc
 
 parameters: # --- Experiment ---
   seed:
-    values: [0, 1, 2]
+    values: [0, 1]
   dataset-source:
     value: d4rl
   dataset-name:
@@ -25,9 +25,9 @@ parameters: # --- Experiment ---
   eval_workers:
     value: 8
   eval_final_episodes:
-    value: 1000
+    value: 0
   checkpoint_dir:
-    value: "./checkpoints/ant_ablation"
+    value: "./checkpoints/ant-bc-edac"
   diversity_logs:
     value: true
 
@@ -53,36 +53,29 @@ parameters: # --- Experiment ---
   polyak_step_size:
     value: 0.005
 
-  # Try both indep + shared
-  shared_targets:
-    values: 
-      - true
-      - false
-
-  # Try num critics
+  # --- SAC-N ---
   num_critics:
-    values: [2, 10]
-
+    value: 10
   pi_operator:
     values:
       - min
-
-  critic_regularizer:
-    values: 
-      - "cql"
-
-  # enough to solve with indep
-  critic_lagrangian:
-    values:
-      - 0.5
+  shared_targets:
+    value: true
 
   ensemble_regularizer:
-    value: "none"
+    value: "edac"
+  reg_lagrangian:
+    values: 
+      - 1.0
+      - 10.0
+      - 100.0
 
   # no extra fancy stuff
   # --- pretraining
   pretrain_updates:
-    value: 0
+    value: 50_000
+  pretrain_loss:
+    value: "bc+none"
 
   # --- RFP
   prior:
