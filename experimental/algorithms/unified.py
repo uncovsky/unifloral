@@ -232,6 +232,9 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset,
                     # numerical stability reasons
                     action = jnp.clip(transition.action, -1.0 + 1e-6, 1.0 - 1e-6)
                     bc = pi.log_prob(action).sum(-1)
+                    
+
+
 
                     def _pairwise_min(q_values):
                         print(q_values.shape)
@@ -245,15 +248,14 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset,
 
                     # Estimate mean advantage
                     if args.awr_operator == "mean":
-                        adv = (q_values - q_pred).mean(-1)
+                        adv = (q_pred - q_values).mean(-1)
                     else:
-                        adv = (q_values - q_pred).min(-1)
-                    adv = adv / args.awr_temperature
+                        adv = (q_pred - q_values).min(-1)
 
+                    adv = adv / args.awr_temperature
                     # exp weight
                     exp_adv = jnp.exp(adv).clip(max=args.awr_weight_clip)
                     exp_adv = jax.lax.stop_gradient(exp_adv)
-
                     q_tgt = exp_adv * bc
 
                 return -q_tgt + alpha * log_pi, -log_pi, q_tgt, std_q, sampled_action
