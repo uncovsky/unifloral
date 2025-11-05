@@ -1,0 +1,75 @@
+command:
+  - python3
+  - ${program}
+  - ${args_no_boolean_flags}
+entity: ahoj
+method: grid
+name: msg_awr
+program: algorithms/unified.py
+project: msg_awr
+
+parameters:
+  # --- Experiment ---
+  seed:
+    values: [0, 1, 2]
+  dataset-source:
+    value: d4rl
+  dataset-name:
+    values: 
+      - pen-cloned-v1
+      - pen-human-v1
+  algorithm:
+    value: msg
+  num_updates:
+    value : 1_000_000
+  eval_interval:
+    value: 10_000
+  eval_workers:
+    value: 8
+  eval_final_episodes:
+    value: 1000
+
+  # --- Logging ---
+  log:
+    value: true
+  checkpoint_dir:
+    value: "./checkpoints/awac-prelims"
+  checkpoint:
+    value: false
+  # --- Generic optimization ---
+  lr:
+    value: 3e-4
+  actor_lr:
+    value: 1e-4
+  batch_size:
+    value: 256
+  gamma:
+    value: 0.99
+  polyak_step_size:
+    value: 0.005
+
+
+  # --- PBRL specific ---
+  critic_regularizer:
+    values: 
+      - "msg"
+  critic_lagrangian:
+    values: 
+      - 0.1
+  awr_operator:
+    values:
+      - "min"
+      - "mean"
+  pi_operator:
+    value: "awr"
+
+  awr_temperature:
+    values: 
+      - 1.0
+      - 0.33
+  num_critics:
+    value: 10
+
+
+
+  
