@@ -232,25 +232,12 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset,
                     # numerical stability reasons
                     action = jnp.clip(transition.action, -1.0 + 1e-6, 1.0 - 1e-6)
                     bc = pi.log_prob(action).sum(-1)
-                    
-
-
-
-                    def _pairwise_min(q_values):
-                        print(q_values.shape)
-                        q_shift = q_values[:1]
-                        q_prev = q_values[1:]
-                        return jnp.minimum(q_shift, q_prev)
-
-                    # Take min over pairs of critics
-                    q_values = _pairwise_min(q_values)
-                    q_pred = _pairwise_min(q_pred)
 
                     # Estimate mean advantage
                     if args.awr_operator == "mean":
-                        adv = (q_pred - q_values).mean(-1)
+                        adv = q.pred.mean(-1) - q_values.mean(-1)
                     else:
-                        adv = (q_pred - q_values).min(-1)
+                        adv = q_pred.min(-1) - q_values.min(-1)
 
                     adv = adv / args.awr_temperature
                     # exp weight
