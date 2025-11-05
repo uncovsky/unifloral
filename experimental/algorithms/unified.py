@@ -84,8 +84,9 @@ class Args:
     # --- Policy Improvement ---
     pi_operator: str = "min" # \in {"min", lcb", "awr"}
     actor_lcb_penalty: float = 4.0 # Used if operator is lcb to penalize with std
-    awr_temperature: float = 0.5 # Used if operator is awr
-    awr_advantage_clip: float = 10.0
+    awr_temperature: float = 1.0 # Used if operator is awr
+    awr_operator : str = "mean" # \in {"min", "mean"}, used to compute advantage
+    awr_weight_clip: float = 100.0 # clip exp(adv / temp) to avoid large weights
     no_entropy_bonus: bool = False # enable / disable entropy bonus
 
     # --- Critic Regularization --- 
@@ -232,10 +233,27 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset,
                     action = jnp.clip(transition.action, -1.0 + 1e-6, 1.0 - 1e-6)
                     bc = pi.log_prob(action).sum(-1)
 
-                    adv = q_values.min(-1) - q_pred.min(-1) # Q(s,a') - Q(s, a)
+                    def _pairwise_min(q_values):
+                        print(q_values.shape)
+                        q_shift = q_values[:1]
+                        q_prev = q_values[1:]
+                        return jnp.minimum(q_shift, q_prev)
+
+                    # Take min over pairs of critics
+                    q_values = _pairwise_min(q_values)
+                    q_pred = _pairwise_min(q_pred)
+
+                    # Estimate mean advantage
+                    if args.awr_operator == "mean":
+                        adv = (q_values - q_pred).mean(-1)
+                    else:
+                        adv = (q_values - q_pred).min(-1)
                     adv = adv / args.awr_temperature
-                    adv = jnp.clip(adv, a_min=-args.awr_advantage_clip, a_max=args.awr_advantage_clip)
-                    exp_adv = jnp.exp(adv)
+
+                    # exp weight
+                    exp_adv = jnp.exp(adv).clip(max=args.awr_weight_clip)
+                    exp_adv = jax.lax.stop_gradient(exp_adv)
+
                     q_tgt = exp_adv * bc
 
                 return -q_tgt + alpha * log_pi, -log_pi, q_tgt, std_q, sampled_action
