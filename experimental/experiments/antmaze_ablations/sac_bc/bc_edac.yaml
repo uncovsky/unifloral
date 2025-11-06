@@ -4,9 +4,9 @@ command:
   - ${args_no_boolean_flags}
 entity: ahoj
 method: grid
-name: msg
+name: edac
 program: algorithms/unified.py
-project: ablation-ant-final
+project: ablation-ant 
 
 parameters:
   # --- Experiment ---
@@ -16,24 +16,24 @@ parameters:
     value: d4rl
   dataset-name:
     values: 
-      - antmaze-umaze-diverse-v2
       - antmaze-medium-diverse-v2
+      - antmaze-large-diverse-v2
   algorithm:
-    value: msg
+    value: pbrl
   num_updates:
-    value : 500_000
+    value : 1_000_000
   eval_interval:
     value: 10_000
   eval_workers:
     value: 8
   eval_final_episodes:
-    value: 100
+    value: 1000
 
   # --- Logging ---
   log:
     value: true
   checkpoint_dir:
-    value: "./checkpoints/ablation_final"
+    value: "./checkpoints/ablation-bc-sac"
 
   wandb_project:
     value: eval-pbrl
@@ -46,12 +46,6 @@ parameters:
   lr:
     value: 3e-4
   actor_lr:
-    value: 1e-4
-  pi_operator:
-    values: 
-      - "lcb"
-      - "min"
-  actor_lr:
     value: 3e-4
   batch_size:
     value: 256
@@ -59,20 +53,31 @@ parameters:
     value: 0.99
   polyak_step_size:
     value: 0.005
+  critic_norm:
+    value: none
 
   critic_regularizer:
     values:
-      - "msg"
+      - "none"
+  shared_targets:
+    value: true
 
-  beta_id:
-    value: 0.0
+  ensemble_regularizer:
+    value: "edac"
 
-  actor_lcb_penalty:
-    value: 4.0
-  critic_lagrangian:
-    values: [0.01, 0.1, 0.5]
+  num_critics:
+    value: 10
+
+  reg_lagrangian:
+    values: 
+      - 1.0
+      - 10.0
+      - 100.0
+
   # --- pretraining
   pretrain_updates:
-    value: 0
-  # no prior
-  
+    value: 50_000
+
+  # bc loss for actor pretrain, no critic loss
+  pretrain_loss:
+    value: "bc+none"

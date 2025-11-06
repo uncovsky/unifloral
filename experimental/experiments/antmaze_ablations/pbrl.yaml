@@ -11,7 +11,7 @@ project: ablation-ant-final
 parameters:
   # --- Experiment ---
   seed:
-    values: [0, 1, 2, 3, 4]
+    values: [0, 1, 2]
   dataset-source:
     value: d4rl
   dataset-name:
@@ -59,10 +59,10 @@ parameters:
       - "pbrl"
 
   beta_id:
-    value: 0.01
+    value: 0.001
 
   critic_lagrangian:
-    values: [0.01, 0.1, 0.5]
+    values: [0.001, 0.01, 0.1]
   # --- pretraining
   pretrain_updates:
     value: 0

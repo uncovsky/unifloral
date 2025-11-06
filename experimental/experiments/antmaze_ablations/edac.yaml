@@ -11,7 +11,7 @@ project: ablation-ant-final
 parameters:
   # --- Experiment ---
   seed:
-    values: [0, 1, 2, 3, 4]
+    values: [0, 1, 2]
   dataset-source:
     value: d4rl
   dataset-name:
