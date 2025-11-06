@@ -11,6 +11,8 @@ def print_args(args : object) -> None:
     print("PI operator: ", args.pi_operator)
     if args.pi_operator == "lcb":
         print(f"\t with LCB penalty: {args.actor_lcb_penalty}")
+    if args.pi_operator == "awr":
+        print(f"\t with AWR temperature: {args.awr_temperature}, using operator: {args.awr_operator}")
     print(f"Critic regularizer: {args.critic_regularizer}, with lagrangian: {args.critic_lagrangian} and ", end="")
     print(f"{parameter_semantics}: {args.critic_regularizer_parameter}")
     print(f"Ensemble regularizer: {args.ensemble_regularizer} with lagrangian: {args.reg_lagrangian}")
