@@ -18,21 +18,20 @@ def dist(obs, gx, gy):
     return np.sqrt((obs[0] - gx)**2 + (obs[1] - gy)**2)
 
 
-def collect_dataset(H, noise_eps, 
-                       episodes=1000,
-                       seed=0):
+def collect_dataset(H, noise_eps,
+                           episodes=1000,
+                           seed=0):
 
     """
-        Collects a dataset on square reach:
+        requires stitching to reach goal
 
-        Phase one - sample random waypoints, navigate back to start
-                        (confounding trajectories)
-
-        Phase two - sample random waypoint, navigate to goal
-    
+        two phases:
+            navigate to random point, return back
+            next episode navigtes from that point to goal with noise
     """
 
     env = gym.make("SquareReachEnv-v0", H=H, render_mode="human")
+
 
     # collect data
     collecting_env = DataCollector(env)
@@ -71,6 +70,89 @@ def collect_dataset(H, noise_eps,
     noise_eps = int(noise_eps*10)
 
     dataset_id = f"square-reach/horizon-{H}-eps{noise_eps}-v0"
+    print("Failed trajs:", failed_trajs_count, "out of", episodes)
+
+    collecting_env.create_dataset(
+        dataset_id=dataset_id,
+        eval_env=env,
+        ref_min_score=0.0,
+        ref_max_score=1.0,
+        algorithm_name="uniform",
+        author="uncovsky",
+        description=f"Simple goal reaching env to test reward propagation, horizon {H}, noise={noise_eps}",)
+
+    env.close()
+
+
+
+
+def collect_stitch_dataset(H, noise_eps, 
+                       episodes=1000,
+                       seed=0):
+
+    """
+        Collects a dataset on square reach:
+
+        navigate to goal with some noise,
+        behavior cloning should work well
+    
+    """
+
+    env = gym.make("SquareReachEnv-v0", H=H, render_mode="human")
+
+    # collect data
+    collecting_env = DataCollector(env)
+
+    """
+        Phase one
+    """
+    # Seed the rng for initial state sampling, but turn it off
+    env.unwrapped.set_randomize(False)
+    env.unwrapped.seed_init(seed)
+    np.random.seed(seed)
+
+    failed_trajs_count = 0
+
+    end = np.array([1.0, 1.0], dtype=np.float32)
+
+    goal = end
+    next_goal = goal
+
+    for ep in range(episodes):
+
+        goal = next_goal
+
+        # Navigate to end from random point
+        if ep % 2 == 0:
+            # Select random init state
+            env.unwrapped.set_randomize(True)
+            obs, _ = collecting_env.reset()
+            next_goal = obs
+
+        # navigate to previous point
+        else:
+            env.unwrapped.set_randomize(False)
+            obs, _ = collecting_env.reset()
+            next_goal = end
+
+        done = False
+        while not done:
+            a = action_to_goal(obs, goal[0], goal[1])
+            a += np.random.normal(0, noise_eps, size=a.shape)
+            np.clip(a, -1.0, 1.0, out=a)
+            next_obs, reward, terminated, truncated, _ = collecting_env.step(a)
+            obs = next_obs
+            done = terminated or truncated
+
+        if done and reward < 1.0:
+            failed_trajs_count += 1
+
+
+    env.unwrapped.plot_trajectories()
+
+    noise_eps = int(noise_eps*10)
+
+    dataset_id = f"square-reach/stitch-horizon-{H}-eps{noise_eps}-v0"
     print("Failed trajs:", failed_trajs_count, "out of", episodes)
 
     collecting_env.create_dataset(

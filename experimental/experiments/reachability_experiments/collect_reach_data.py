@@ -1,4 +1,4 @@
-from experiments.reachability_experiments.reach.reach_data_collection import collect_dataset
+from experiments.reachability_experiments.reach.reach_data_collection import collect_dataset, collect_stitch_dataset
 
 
 def collect_data_reach():
@@ -8,5 +8,7 @@ def collect_data_reach():
         for noise in [0.1, 0.2, 0.3]:
             seed = seeds[i]
             i += 1
+            collect_stitch_dataset(H=horizon, noise_eps=noise, episodes=1000,
+                                   seed=seed)
             collect_dataset(H=horizon, noise_eps=noise, episodes=1000,
                             seed=seed)
