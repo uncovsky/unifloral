@@ -1,6 +1,7 @@
-from experiments import collect_bandit_data, collect_cql_data, collect_uniform_data, collect_d_dim_data
+from experiments import collect_bandit_data, collect_cql_data, collect_uniform_data, collect_d_dim_data, collect_data_reach
 
 def collect_data():
+    collect_data_reach()
     collect_d_dim_data(episodes=1000, ds=[10, 20, 30, 40], seeds=[0,1,2])
     collect_uniform_data(episodes=1000, seed=0)
     collect_cql_data(episodes=10000, seed=0)
