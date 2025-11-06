@@ -1,0 +1,72 @@
+command:
+  - python3
+  - ${program}
+  - ${args_no_boolean_flags}
+entity: ahoj
+method: grid
+name: sac_cql
+program: algorithms/unified.py
+project: ablation-ant-final
+
+parameters:
+  # --- Experiment ---
+  seed:
+    values: [0, 1, 2, 3, 4]
+  dataset-source:
+    value: d4rl
+  dataset-name:
+    values: 
+      - antmaze-umaze-diverse-v2
+      - antmaze-medium-diverse-v2
+  algorithm:
+    value: msg
+  num_updates:
+    value : 500_000
+  eval_interval:
+    value: 10_000
+  eval_workers:
+    value: 8
+  eval_final_episodes:
+    value: 100
+
+  # --- Logging ---
+  log:
+    value: true
+  checkpoint_dir:
+    value: "./checkpoints/ablation_final"
+
+  wandb_project:
+    value: eval-pbrl
+  wandb_team:
+    value: ahoj
+  wandb_group:
+    value: debug
+
+  # --- Generic optimization ---
+  lr:
+    value: 3e-4
+  actor_lr:
+    value: 3e-4
+  batch_size:
+    value: 256
+  gamma:
+    value: 0.99
+  polyak_step_size:
+    value: 0.005
+
+  critic_regularizer:
+    values:
+      - "none"
+      - "msg"
+
+  shared_targets:
+    value: true
+  num_critics:
+    value: 10
+  critic_lagrangian:
+    value: 0.1
+  # --- pretrainin
+  pretrain_updates:
+    value: 0
+  # no prior
+  
