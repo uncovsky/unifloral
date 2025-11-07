@@ -32,6 +32,8 @@ class TanhGaussianActor(nn.Module):
                     self.num_actions, kernel_init=sym(1e-3), bias_init=sym(1e-3)
                     )(x)
 
+            std = jnp.exp(jnp.clip(log_std, self.log_std_min, self.log_std_max))
+
             pi = distrax.Transformed(
                     distrax.Normal(mean, std),
                     distrax.Tanh(),
