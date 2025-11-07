@@ -6,7 +6,7 @@ entity: ahoj
 method: grid
 name: SACN
 program: algorithms/unified.py
-project: reachability-unified
+project: reachability-stitch
 
 parameters:
   # --- Experiment ---
@@ -31,7 +31,7 @@ parameters:
     #values: [200_000, 500_000]
     value : 20_000
   eval_interval:
-    value: 10_000
+    value: 2_000
   eval_workers:
     value: 8
   eval_final_episodes:
@@ -40,7 +40,7 @@ parameters:
   checkpoint:
     value: False
   checkpoint_dir:
-    value: "./checkpoints/reachability"
+    value: "./checkpoints/reachability-stitch"
 
   # --- Logging ---
   log:

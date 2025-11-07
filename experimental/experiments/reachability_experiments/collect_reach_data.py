@@ -10,5 +10,5 @@ def collect_data_reach():
             i += 1
             collect_stitch_dataset(H=horizon, noise_eps=noise, episodes=1000,
                                    seed=seed)
-            collect_dataset(H=horizon, noise_eps=noise, episodes=1000,
-                            seed=seed)
+            #collect_dataset(H=horizon, noise_eps=noise, episodes=1000,
+             #               seed=seed)

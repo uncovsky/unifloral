@@ -10,7 +10,7 @@ project: antmaze-collapse
 
 parameters: # --- Experiment ---
   seed:
-    values: [0, 1, 2]
+    value: 0
   dataset-source:
     value: d4rl
   dataset-name:
@@ -27,7 +27,7 @@ parameters: # --- Experiment ---
   eval_final_episodes:
     value: 1000
   checkpoint_dir:
-    value: "./checkpoints/ant_ablation"
+    value: "./checkpoints/ant_sac"
   diversity_logs:
     value: true
 
@@ -53,31 +53,27 @@ parameters: # --- Experiment ---
   polyak_step_size:
     value: 0.005
 
-  # Try both indep + shared
-  shared_targets:
-    values: 
-      - true
-      - false
-
-  # Try num critics
+  # --- SAC-N ---
   num_critics:
     values: [2, 10]
-
   pi_operator:
     values:
       - min
-
-  critic_regularizer:
-    values: 
-      - "cql"
-
-  # enough to solve with indep
-  critic_lagrangian:
-    values:
-      - 0.5
+  shared_targets:
+    value: true
 
   ensemble_regularizer:
     value: "none"
+
+  critic_regularizer:
+    value: "cql"
+
+  critic_lagrangian:
+    values: 
+      - 5.0
+      - 10.0
+      - 2.5
+
 
   # no extra fancy stuff
   # --- pretraining

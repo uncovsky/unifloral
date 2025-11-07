@@ -161,10 +161,8 @@ def regularizer_factory(args, actor_apply_fn, q_apply_fn):
             ood_target = q_ood - args.critic_lagrangian * std_q_ood
             ood_target = jnp.maximum(ood_target, 0.0)
             ood_target = jax.lax.stop_gradient(ood_target)
-            print(q_ood, ood_target)
+            ood_loss = jnp.square(q_ood - ood_target).sum(axis=-1).mean()
 
-            # Take sum over ensemble dimension, mean over actions and 1/sum_mask over states
-            ood_loss = jnp.square(q_ood - ood_target).sum(axis=-1).mean(axis=-1).sum() / ( sum_mask )
             logs = {
                 "pbrl_ood_q_mean": q_ood_raw.mean(),
                 "states_penalized": sum_mask,

@@ -65,7 +65,8 @@ parameters:
 
   # --- SAC-N ---
   num_critics:
-    values: [2, 10]
+    values: 
+      - 10
 
   # --- CQL ---
   shared_targets:
@@ -73,7 +74,10 @@ parameters:
   pi_operator:
     value: min
   critic_regularizer:
-    value: none
+    value: "cql"
+  critic_lagrangian:
+    values:
+      - 1.0
 
   # --- Experimental ---
   pretrain_updates:
