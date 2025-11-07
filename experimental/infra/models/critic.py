@@ -16,8 +16,6 @@ from infra.models.initialization import sym, he_normal
     Uses different scaling for last layer on learnable vs prior fns.
 
 """
-
-
 class SoftQNetwork(nn.Module):
     depth: int = 3
     critic_norm: str = "none"

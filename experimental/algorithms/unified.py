@@ -85,7 +85,7 @@ class Args:
     pi_operator: str = "min" # \in {"min", lcb", "awr"}
     actor_lcb_penalty: float = 4.0 # Used if operator is lcb to penalize with std
     awr_temperature: float = 1.0 # Used if operator is awr
-    awr_operator : str = "mean" # \in {"min", "mean"}, used to compute advantage
+    awr_operator : str = "min" # \in {"min", "mean"}, used to compute advantage
     awr_weight_clip: float = 100.0 # clip exp(adv / temp) to avoid large weights
     no_entropy_bonus: bool = False # enable / disable entropy bonus
 
@@ -222,33 +222,55 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset,
                 elif args.pi_operator == "lcb":
                     q_tgt = q_values.mean(-1) - args.actor_lcb_penalty * std_q
 
-                else:
-                    # AWR
+                return -q_tgt + alpha * log_pi, -log_pi, q_tgt, std_q, sampled_action
+
+
+
+            if args.pi_operator == "awr":
+                    # clip for distrax stability reasons
+                    action = jnp.clip(batch.action, -1.0 + 1e-6, 1.0 - 1e-6)
+                    pi = actor_apply_fn(params, batch.obs)
+                    actions_pi = pi.sample(seed=rng)
+
                     q_pred = q_apply_fn(
                             agent_state.vec_q.params,
-                            transition.obs, transition.action
+                            batch.obs, action
                     )
 
-                    # numerical stability reasons
-                    action = jnp.clip(transition.action, -1.0 + 1e-6, 1.0 - 1e-6)
+                    q_values = q_apply_fn(
+                            agent_state.vec_q.params,
+                            batch.obs, actions_pi
+                    )
+
                     bc = pi.log_prob(action).sum(-1)
+
+                    def _pairwise_min(qvals):
+                        qvals_shift = qvals[1:]
+                        qvals_curr = qvals[:-1]
+                        return jnp.minimum(qvals_curr, qvals_shift)
 
                     # Estimate mean advantage
                     if args.awr_operator == "mean":
-                        adv = q.pred.mean(-1) - q_values.mean(-1)
+                        q_pred = _pairwise_min(q_pred)
+                        q_values = _pairwise_min(q_values)
+                        adv = q_pred.mean(-1) - q_values.mean(-1)
+
                     else:
                         adv = q_pred.min(-1) - q_values.min(-1)
 
                     adv = adv / args.awr_temperature
-                    # exp weight
                     exp_adv = jnp.exp(adv).clip(max=args.awr_weight_clip)
                     exp_adv = jax.lax.stop_gradient(exp_adv)
-                    q_tgt = exp_adv * bc
 
-                return -q_tgt + alpha * log_pi, -log_pi, q_tgt, std_q, sampled_action
+                    loss = -(exp_adv * bc).mean()
+                    entropy = -bc.mean()
+                    q_target = q_pred.mean(-1)
+                    q_std = q_pred.std(-1)
+                    actions = actions_pi
+            else:
+                rng = jax.random.split(rng, args.batch_size)
+                loss, entropy, q_target, q_std, actions = jax.vmap(_compute_loss)(rng, batch)
 
-            rng = jax.random.split(rng, args.batch_size)
-            loss, entropy, q_target, q_std, actions = jax.vmap(_compute_loss)(rng, batch)
             mean_dist = jnp.square(actions - batch.action).mean()
 
             return loss.mean(), (entropy.mean(), q_target.mean(), q_target.std(), mean_dist) 
@@ -513,7 +535,11 @@ def train(args):
     num_actions = env.single_action_space.shape[0]
     dummy_obs = jnp.zeros(env.single_observation_space.shape)
     dummy_action = jnp.zeros(num_actions)
-    actor_net = TanhGaussianActor(num_actions)
+
+
+    # If using a SAC-style update, use per state std, otherwise one param
+    per_state_std = args.pi_operator != "awr"
+    actor_net = TanhGaussianActor(num_actions, per_state_std=per_state_std)
 
     # --- Init Q, include prior net if enabled ---
     if args.prior:
