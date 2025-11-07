@@ -16,10 +16,11 @@ parameters:
     value: d4rl
   dataset-name:
     values: 
-      - walker2d-medium-replay-v2
+      - pen-human-v1
       - kitchen-mixed-v0
       - pen-cloned-v1
-      - pen-human-v1
+      - pen-expert-v1
+      - walker2d-medium-replay-v2
   algorithm:
     value: msg
   num_updates:
@@ -50,20 +51,25 @@ parameters:
   polyak_step_size:
     value: 0.005
 
+  no_entropy_bonus:
+    value: true
+
   shared_targets:
     values:
-      - true
       - false
+
   # --- PBRL specific ---
   critic_regularizer:
     values: 
-      - "msg"
       - "pbrl"
+
   critic_lagrangian:
     values: 
       - 0.01
-      - 0.1
-      - 1.0
+
+  critic_regularizer_parameter:
+    value: 4
+
   awr_operator:
     values:
       - "min"
@@ -73,7 +79,9 @@ parameters:
   awr_temperature:
     values: 
       - 1.0
-      - 0.33
+      - 0.3
+      - 0.5
+      - 0.1
   num_critics:
     values: 
       - 10

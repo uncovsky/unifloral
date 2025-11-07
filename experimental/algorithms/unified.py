@@ -62,10 +62,10 @@ class Args:
     wandb_team: str = "flair"
     wandb_group: str = "debug"
 
-    # --- Environment --- 
+    # --- Environment ---
     action_scale: float = 1.0 # Scale action space from [-1, 1]^d to [-scale, scale]^d
     reward_scale: float = 1.0 # a
-    reward_shift: float = 0.0 # b, rewards transformed r -> a * r + b 
+    reward_shift: float = 0.0 # b, rewards transformed r -> a * r + b
 
     # --- Generic optimization ---
     actor_lr: float = 1e-4
@@ -89,7 +89,7 @@ class Args:
     awr_weight_clip: float = 100.0 # clip exp(adv / temp) to avoid large weights
     no_entropy_bonus: bool = False # enable / disable entropy bonus
 
-    # --- Critic Regularization --- 
+    # --- Critic Regularization ---
     critic_regularizer: str = "none" # \in {"none", "cql", "pbrl", "msg"}
     critic_lagrangian: float = 1.0
     critic_depth: int = 3
@@ -104,11 +104,11 @@ class Args:
     pretrain_loss : str = "bc+sarsa"
     pretrain_lagrangian: float = 1.0
 
-    # --- Diversity Regularization --- 
+    # --- Diversity Regularization ---
     ensemble_regularizer : str = "none"
     reg_lagrangian: float = 1.0
 
-    # --- RPF --- 
+    # --- RPF ---
     prior: bool = False
     randomized_prior_depth : int = 3
     randomized_prior_scale : float = 1.0
@@ -201,6 +201,7 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset,
         """
         @partial(jax.value_and_grad, has_aux=True)
         def _actor_loss_function(params, rng):
+
             def _compute_loss(rng, transition):
                 pi = actor_apply_fn(params, transition.obs)
                 sampled_action, log_pi = pi.sample_and_log_prob(seed=rng)
@@ -273,7 +274,7 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset,
 
             mean_dist = jnp.square(actions - batch.action).mean()
 
-            return loss.mean(), (entropy.mean(), q_target.mean(), q_target.std(), mean_dist) 
+            return loss.mean(), (entropy.mean(), q_target.mean(), q_target.std(), mean_dist)
 
         """
             Update actor
@@ -295,8 +296,8 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset,
         logprobs_next = logprobs_next.sum(-1, keepdims=True)
 
         # --- Bootstrap actions with target nets ---
-        next_q = q_apply_fn(agent_state.vec_q_target.params, 
-                            batch.next_obs, 
+        next_q = q_apply_fn(agent_state.vec_q_target.params,
+                            batch.next_obs,
                             bootstrap_actions)
         """
             Evaluate PE operator
@@ -319,7 +320,7 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset,
         """
         td_target = jnp.expand_dims(batch.reward, -1) + args.gamma * jnp.expand_dims((1 - batch.done), -1) * next_v_target
 
-        # --- Get specialized regularizer loss function with current state --- 
+        # --- Get specialized regularizer loss function with current state ---
         rng, rng_reg, rng_reg_loss = jax.random.split(rng, 3)
         rng, rng_critic, rng_critic_loss = jax.random.split(rng, 3)
 
@@ -355,7 +356,7 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset,
             regularizer_loss = ensemble_reg_loss(params, rng_reg_loss, batch)
 
             """
-                Critic regularizer 
+                Critic regularizer
 
                 L(Q_ij) += R_ood(Q_i, lambda_ood)
             """
@@ -366,7 +367,7 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset,
 
             return critic_loss, (logs,
                                  regularizer_loss,
-                                 critic_regularizer_loss, 
+                                 critic_regularizer_loss,
                                  q_pred.mean(),
                                  q_pred.std() )
 
@@ -418,11 +419,11 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset,
 
         if args.diversity_logs:
 
-            # --- DIVERSITY: get EDAC diversity loss --- 
-            diversity_loss_val = diversity_loss(q_apply_fn, 
-                                                agent_state, 
-                                                batch.obs, 
-                                                batch.action, 
+            # --- DIVERSITY: get EDAC diversity loss ---
+            diversity_loss_val = diversity_loss(q_apply_fn,
+                                                agent_state,
+                                                batch.obs,
+                                                batch.action,
                                                 args.num_critics)
 
             # --- DIVERSITY: sample random actions and eval ---
@@ -435,7 +436,7 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset,
             if ood_obs is not None and ood_actions is not None:
                 ood_stats = compute_qvalue_statistics(q_apply_fn,
                                                       agent_state,
-                                                      ood_obs, 
+                                                      ood_obs,
                                                       ood_actions)
                 # Add to logs
                 for k, v in ood_stats.items():
@@ -478,7 +479,7 @@ def train(args):
     if args.diversity_logs and is_locomotion_dataset(args.dataset_name):
 
         """
-            get a different dataset, on which we will evaluate 
+            get a different dataset, on which we will evaluate
             ensemble diversity stats (std, disagreement)
         """
         print("Preparing OOD dataset for diversity logs...")
@@ -514,7 +515,7 @@ def train(args):
     dataset_wrapper = OfflineDatasetWrapper(source=args.dataset_source,
                                             dataset=args.dataset_name)
 
-    
+
 
     # --- Initialize environment and dataset ---
     rng, rng_env = jax.random.split(rng)
@@ -571,7 +572,7 @@ def train(args):
 
     # --- Make train step ---
     _agent_train_step_fn = make_train_step(
-        args, actor_net.apply, q_apply, alpha_net.apply, dataset, 
+        args, actor_net.apply, q_apply, alpha_net.apply, dataset,
         ood_obs=ood_obs, ood_actions=ood_actions
     )
 
@@ -656,9 +657,9 @@ def train(args):
             }
             wandb.log(log_dict)
 
-     
 
-      
+
+
     # Save final checkpoint for evaluation
     if args.checkpoint:
         ckpt_dir = create_checkpoint_dir(exp_dir)

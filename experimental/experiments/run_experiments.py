@@ -60,13 +60,13 @@ if __name__ == "__main__":
 
     # All the experiments in the thesis
     experiment_folders = [
-        "experiments/bias_experiments/expert_vis",
-        "experiments/antmaze_ablations",
-        "experiments/reachability_experiments/ant"
+        #"experiments/bias_experiments/expert_vis",
+        #"experiments/antmaze_ablations",
+        #"experiments/reachability_experiments/ant"
     ]
 
     unifloral_folders = [
-        #"experiments/unifloral_eval/",
+        "experiments/ensemble_awac"
     ]
 
     unifloral_runs = 10
