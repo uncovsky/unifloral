@@ -245,9 +245,9 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset,
                     bc = pi.log_prob(action).sum(-1)
 
                     def _pairwise_min(qvals):
-                        qvals_shift = qvals[1:]
-                        qvals_curr = qvals[:-1]
-                        return jnp.minimum(qvals_curr, qvals_shift)
+                        qvals_odd = qvals[:, 1::2]
+                        qvals_even = qvals[:, 0::2]
+                        return jnp.minimum(qvals_odd, qvals_even)
 
                     # Estimate mean advantage
                     if args.awr_operator == "mean":
