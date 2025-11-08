@@ -20,7 +20,7 @@ parameters: # --- Experiment ---
   algorithm:
     value: edac
   num_updates:
-    value : 1_000_000
+    value : 300_000
   eval_interval:
     value: 10_000
   eval_workers:
@@ -84,7 +84,8 @@ parameters: # --- Experiment ---
 
   reg_lagrangian:
     values:
-      - 1.0 
+      - 10.0
+      
 
   # no extra fancy stuff
   # --- pretraining

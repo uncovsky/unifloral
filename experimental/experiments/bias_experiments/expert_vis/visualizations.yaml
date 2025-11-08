@@ -20,7 +20,7 @@ parameters: # --- Experiment ---
   algorithm:
     value: unified
   num_updates:
-    value : 1_000_000
+    value : 300_000
   eval_interval:
     value: 10_000
   eval_workers:
@@ -73,13 +73,13 @@ parameters: # --- Experiment ---
 
   # ood actions sampled
   critic_regularizer_parameter:
-    value: 2
+    value: 1
 
   # kinda small
   critic_lagrangian:
     values:
-      - 0.1
       - 0.5
+      - 1.0
   ensemble_regularizer:
     value: "none"
 
