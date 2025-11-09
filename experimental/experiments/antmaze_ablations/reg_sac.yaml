@@ -4,7 +4,7 @@ command:
   - ${args_no_boolean_flags}
 entity: ahoj
 method: grid
-name: sac_cql
+name: sac_regularized
 program: algorithms/unified.py
 project: ablation-ant-final
 
@@ -56,12 +56,17 @@ parameters:
 
   critic_regularizer:
     values:
-      - "none"
+      - "msg"
 
   shared_targets:
     value: true
   num_critics:
-    value: 10
+    values: 
+      - 2
+      - 10
+  # Try values used by MSG that worked
+  critic_lagrangian:
+    values: [0.01, 0.1, 0.5]
   # --- pretrainin
   pretrain_updates:
     value: 0
