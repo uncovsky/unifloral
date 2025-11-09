@@ -3,8 +3,10 @@ from tex_setup import set_size
 import pandas as pd
 import seaborn as sns
 
+"""
+    Generic line plotting for figures
+"""
 
-# given a df and and an x and y column, plot a lineplot with tex setup
 
 def plot_lineplot(df, x_col, y_col, hue_col=None, title=None, xlabel=None,
                   ylabel=None, figsize=None):
@@ -46,7 +48,7 @@ if __name__ == "__main__":
     # load to big df
     df_list = []
     for x in [10, 20, 30]:
-        df = pd.read_csv(f"lineplots/edac{x}.csv")
+        df = pd.read_csv(f"vis_data/lineplots/edac{x}.csv")
         df["N"] = x
         df["Step"] = df["Step"] * (14 / 4)
 
@@ -66,6 +68,6 @@ if __name__ == "__main__":
         figsize=set_size(width_fraction=0.4, height_fraction=0.15)
     )
 
-    fig.savefig("lineplots/edac_lineplot.pdf", bbox_inches='tight', dpi=300)
+    fig.savefig("figures/edac_lineplot.pdf", bbox_inches='tight', dpi=300)
 
 

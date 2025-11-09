@@ -2,7 +2,11 @@ from tex_setup import set_size
 
 """
 
-evaluation utilities for the unifloral project.
+    Runs UCB evaluation from Unifloral.
+    - taken entirely from unifloral, except for visualization
+    pipeline.
+
+
 
 This module provides tools for:
 1. Loading and parsing experiment results
@@ -436,4 +440,4 @@ if __name__ == "__main__":
 
     plt.tight_layout()
     plt.subplots_adjust(bottom=0.20)  # Increase bottom margin for legend
-    plt.savefig("eval.pdf", dpi=300, bbox_inches='tight')
+    plt.savefig("figures/eval.pdf", dpi=300, bbox_inches='tight')

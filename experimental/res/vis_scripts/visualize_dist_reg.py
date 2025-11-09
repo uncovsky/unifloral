@@ -4,9 +4,13 @@ import matplotlib.pyplot as plt
 
 from tex_setup import set_size
 
-df = pd.read_csv("sparse_plots/antmaze-collapse_runs.csv")
+"""
+    Plots comparing action distribution shift
+    across different regularizers and lagrangian values.
+"""
 
 
+df = pd.read_csv("vis_data/sparse_plots/antmaze-collapse_runs.csv")
 
 
 reg_df = df[df.run_index < 6]

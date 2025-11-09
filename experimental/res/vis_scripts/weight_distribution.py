@@ -16,6 +16,15 @@ from tex_setup import set_size
 import matplotlib.pyplot as plt
 from matplotlib.cm import get_cmap
 
+
+""" 
+
+   Loads checkpoints of models
+   and visualizes the weight distributions
+   of first layer of the critics
+
+"""
+
 def sym(scale):
     def _init(*args, **kwargs):
         return uniform(2 * scale)(*args, **kwargs) - scale
@@ -41,15 +50,12 @@ class SoftQNetwork(nn.Module):
                     x = layer(x)
                     x = nn.LayerNorm()(x)
                 else:
-                    # no normalization
                     x = layer(x)
             else:
-                # Non-learnable nets (prior) have no normalization
                 x = layer(x)
 
             x = nn.relu(x)
 
-        # For learnable Q-nets, we use a different last layer init
         if self.learnable:
             last_layer = nn.Dense(1, kernel_init=sym(3e-3), bias_init=sym(3e-3))
         else:
@@ -67,9 +73,9 @@ class VectorQ(nn.Module):
         vmap_critic = nn.vmap(
                 partial(SoftQNetwork, critic_norm=self.critic_norm,
                                       depth=self.depth,
-                                      learnable=True), # all learnable
-                variable_axes={"params": 0, "batch_stats" : 0},  # Parameters not shared between critics
-                split_rngs={"params": True, "dropout": True},  # Different initializations
+                                      learnable=True), 
+                variable_axes={"params": 0, "batch_stats" : 0},  
+                split_rngs={"params": True, "dropout": True},  
                 in_axes=None,
                 out_axes=-1,
                 axis_size=self.num_critics,
@@ -93,7 +99,7 @@ def load_checkpoints(ckpt_dir):
     weights_dict = {}
 
     for i, folder in enumerate(sorted(folders)):
-        color = cmap(i % 10)         # ✅ same color for "first entry", "second entry", etc.
+        color = cmap(i % 10)         
 
         for checkpoint in os.listdir(os.path.join(ckpt_dir, folder)):
             checkpoint_folder = os.path.join(ckpt_dir, folder, checkpoint)
@@ -131,8 +137,8 @@ def visualize_weights(weights_dict, ax, labels=None):
 
 
 if __name__ == "__main__":
-    dir1 = "3d_vis/expertvis-qplot/edac"
-    dir2 = "3d_vis/expertvis-qplot/compare"
+    dir1 = "vis_data/3d_vis/expertvis-qplot/edac"
+    dir2 = "vis_data/3d_vis/expertvis-qplot/compare"
 
     all_folders = collect_folders([dir1, dir2])
     cmap = get_cmap("tab10")
@@ -145,6 +151,6 @@ if __name__ == "__main__":
     weights2 = load_checkpoints(dir2)
     visualize_weights(weights2, axes[1], labels=["EDAC", "CQL"])
     axes[0].set_ylabel("Density")
-    fig.subplots_adjust(bottom=0.15)   # ← increase bottom margin
+    fig.subplots_adjust(bottom=0.15)  
     fig.text(0.5, -0.10, "Weight Value", ha="center")
-    plt.savefig("weight_distributions.pdf", dpi=300, bbox_inches="tight")
+    plt.savefig("figures/weight_distributions.pdf", dpi=300, bbox_inches="tight")

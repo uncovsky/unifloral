@@ -1,9 +1,11 @@
 import pandas as pd
+"""
+    Compares results across different num_critics settings
+    but sharing other hyperparameters
+"""
 
-# Load CSV
 df = pd.read_csv("res_runs.csv")
 
-# Hyperparameter columns that must match (except num_critics)
 hp_cols = ["algorithm", "dataset_name", 
            "critic_lagrangian", "reg_lagrangian", 
            "actor_lcb_penalty"]
@@ -17,7 +19,6 @@ hp_cols = [
 ]
 
 
-# Group by all hyperparameters except num_critics
 groups = df.groupby(hp_cols)
 
 for hp_values, group in groups:

@@ -14,7 +14,7 @@ from tex_setup import set_size
 """
 
 # Fetch results
-df = load_results_dataframe("vis_data/unifloral_eval.csv")
+df = load_results_dataframe("vis_data/unifloral_eval")
 algorithms = sorted(df['algorithm'].unique())
 datasets = sorted(df['dataset'].unique())
 result_dict = {}
@@ -84,7 +84,7 @@ legend = fig.legend(
 plt.tight_layout()
 plt.subplots_adjust(top=0.85)  
 
-plt.savefig("perf.pdf", dpi=300, bbox_inches='tight')
+plt.savefig("figures/perf.pdf", dpi=300, bbox_inches='tight')
 
 
 
@@ -142,6 +142,6 @@ plt.ylabel("D4RL Normalized Score")
 plt.xlabel("")
 
 plt.legend().remove()
-plt.savefig("violin_basic.pdf", dpi=300, bbox_inches='tight')
+plt.savefig("figures/violin_basic.pdf", dpi=300, bbox_inches='tight')
 
 
