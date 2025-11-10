@@ -204,7 +204,9 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset,
 
             def _compute_loss(rng, transition):
                 pi = actor_apply_fn(params, transition.obs)
+
                 sampled_action, log_pi = pi.sample_and_log_prob(seed=rng)
+
                 log_pi = log_pi.sum()
 
                 q_values = q_apply_fn(
@@ -228,14 +230,16 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset,
 
 
             if args.pi_operator == "awr":
-                    # clip for distrax stability reasons
-                    action = jnp.clip(batch.action, -1.0 + 1e-6, 1.0 - 1e-6)
                     pi = actor_apply_fn(params, batch.obs)
-                    actions_pi = pi.sample(seed=rng)
+
+                    # the AWR actor is a clipped gaussian
+                    actions_pi, log_probs = pi.sample_and_log_prob(seed=rng)
+                    actions_pi = jnp.clip(actions_pi, -args.action_scale, args.action_scale)
+
 
                     q_pred = q_apply_fn(
                             agent_state.vec_q.params,
-                            batch.obs, action
+                            batch.obs, batch.action
                     )
 
                     q_values = q_apply_fn(
@@ -243,7 +247,7 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset,
                             batch.obs, actions_pi
                     )
 
-                    bc = pi.log_prob(action).sum(-1)
+                    bc = pi.log_prob(batch.action).sum(-1)
 
                     def _pairwise_min(qvals):
                         qvals_odd = qvals[:, 1::2]
@@ -264,7 +268,7 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset,
                     exp_adv = jax.lax.stop_gradient(exp_adv)
 
                     loss = -(exp_adv * bc).mean()
-                    entropy = -bc.mean()
+                    entropy = -log_probs.sum(-1)
                     q_target = q_pred.mean(-1)
                     q_std = q_pred.std(-1)
                     actions = actions_pi
@@ -293,6 +297,13 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset,
         rng_next, rng = jax.random.split(rng, 2)
         next_pis = actor_apply_fn(agent_state.actor.params, batch.next_obs)
         bootstrap_actions, logprobs_next = next_pis.sample_and_log_prob(seed=rng_next)
+
+        
+        if args.pi_operator == "awr":
+            # Use clipped gaussian for AWR
+            bootstrap_actions = jnp.clip(bootstrap_actions, -args.action_scale, args.action_scale)
+
+
         logprobs_next = logprobs_next.sum(-1, keepdims=True)
 
         # --- Bootstrap actions with target nets ---
