@@ -75,7 +75,6 @@ parameters:
     values: 
       - 0.001
       - 0.01
-      - 0.0
 
   critic_regularizer_parameter:
     value: 4
