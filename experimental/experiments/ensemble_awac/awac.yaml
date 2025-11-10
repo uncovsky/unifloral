@@ -94,8 +94,9 @@ parameters:
       - 0.1
   num_critics:
     values: 
+      - 2
       - 10
-      - 30
+      - 20
 
 
 
