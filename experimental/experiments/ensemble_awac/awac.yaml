@@ -68,14 +68,11 @@ parameters:
       - "pbrl"
 
   beta_id:
-    values:
-      - 0.001
-      - 0.0
+    values: [0.01, 0.001, 0.0001]
+
+  # --- RANDOMIZED OVER --- 
   critic_lagrangian:
-    values: 
-      - 0.001
-      - 0.01
-      - 0.1
+    values: [0.01, 0.1, 1.0]
 
   critic_regularizer_parameter:
     value: 4
@@ -96,7 +93,7 @@ parameters:
   num_critics:
     values: 
       - 10
-      - 20
+      - 30
 
 
 
