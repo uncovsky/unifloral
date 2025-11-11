@@ -380,7 +380,7 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset,
                                  regularizer_loss,
                                  critic_regularizer_loss,
                                  q_pred.mean(),
-                                 q_pred.std() )
+                                 q_pred.std(-1).mean() )
 
         (critic_loss, (logs, regularizer_loss, critic_regularizer_loss, q_pred_mean,
                        q_pred_std)), critic_grad = _q_loss_fn(agent_state.vec_q.params)
