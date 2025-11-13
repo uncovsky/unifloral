@@ -65,18 +65,13 @@ parameters:
   # --- PBRL specific ---
   critic_regularizer:
     values: 
-      - "pbrl"
+      - "none"
 
   beta_id:
-    values: [0.01, 0.001, 0.0001]
-
-  # --- RANDOMIZED OVER --- 
-  critic_lagrangian:
-    values: [0.01, 0.1, 1.0]
-
-  critic_regularizer_parameter:
-    value: 4
-
+    values: 
+      - 0.05
+      - 0.1
+      - 0.15
   awr_operator:
     values:
       - "min"
@@ -87,13 +82,12 @@ parameters:
   awr_temperature:
     values: 
       - 2.0
-      - 1.0
       - 0.3
       - 0.1
+      - 0.05
   num_critics:
     values: 
       - 10
-      - 30
 
 
 

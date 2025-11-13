@@ -4,7 +4,7 @@ command:
   - ${args_no_boolean_flags}
 entity: ahoj
 method: random
-name: shared_awac
+name: mean_awac_lower_beta
 program: algorithms/unified.py
 project: awac-unifloral-eval
 
@@ -26,7 +26,7 @@ parameters:
       - maze2d-large-v1
       - kitchen-mixed-v0
   algorithm:
-    value: awac 
+    value: u_awac
   num_updates:
     value : 1_000_000
   eval_interval:
@@ -40,7 +40,7 @@ parameters:
   log:
     value: true
   checkpoint_dir:
-    value: "./checkpoints/shared_uwac_eval"
+    value: "./checkpoints/uwac_eval"
   checkpoint:
     value: false
   # --- Generic optimization ---
@@ -60,29 +60,32 @@ parameters:
 
   shared_targets:
     values:
-      - true
+      - false
 
   # --- PBRL specific ---
   critic_regularizer:
     values: 
       - "none"
 
+  beta_id:
+    values: 
+      - 0.05
   awr_operator:
     values:
       - "min"
+      - "mean"
+
   pi_operator:
     value: "awr"
 
   awr_temperature:
     values: 
       - 2.0
-      - 1.0
-      - 0.3
+      - 0.33
       - 0.1
-
   num_critics:
     values: 
-      - 2
+      - 10
 
 
 
