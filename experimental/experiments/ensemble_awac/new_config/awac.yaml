@@ -69,10 +69,12 @@ parameters:
 
   beta_id:
     values: 
+      - 0.001
+      - 0.01
       - 0.05
+
   awr_operator:
     values:
-      - "min"
       - "mean"
 
   pi_operator:
@@ -83,6 +85,7 @@ parameters:
       - 2.0
       - 0.33
       - 0.1
+      - 0.05
   num_critics:
     values: 
       - 10
