@@ -196,6 +196,7 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset,
         else:
             alpha_loss = jnp.array(0.0)
             alpha = jnp.array(0.0)
+
         """
             Actor loss (Policy Improvement)
         """
@@ -225,7 +226,9 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset,
                 elif args.pi_operator == "lcb":
                     q_tgt = q_values.mean(-1) - args.actor_lcb_penalty * std_q
 
-                return -q_tgt + alpha * log_pi, -log_pi, q_tgt, std_q, sampled_action
+                advantages = jnp.array(0.0)  # Dummy for AWR compatibility
+
+                return -q_tgt + alpha * log_pi, -log_pi, q_tgt, std_q, sampled_action, advantages
 
 
 
@@ -250,6 +253,10 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset,
                     bc = pi.log_prob(batch.action).sum(-1)
 
                     def _pairwise_min(qvals):
+                        """ 
+                            Compute pairwise min over critics
+                            for softer advantage estimation
+                        """
                         qvals_odd = qvals[:, 1::2]
                         qvals_even = qvals[:, 0::2]
                         return jnp.minimum(qvals_odd, qvals_even)
@@ -263,6 +270,7 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset,
                     else:
                         adv = q_pred.min(-1) - q_values.min(-1)
 
+                    advantages = adv
                     adv = adv / args.awr_temperature
                     exp_adv = jnp.exp(adv).clip(max=args.awr_weight_clip)
                     exp_adv = jax.lax.stop_gradient(exp_adv)
@@ -278,13 +286,13 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset,
 
             mean_dist = jnp.square(actions - batch.action).mean()
 
-            return loss.mean(), (entropy.mean(), q_target.mean(), q_target.std(), mean_dist)
+            return loss.mean(), (entropy.mean(), q_target.mean(), q_target.std(), mean_dist, advantages.mean())
 
         """
             Update actor
         """
         rng, rng_actor = jax.random.split(rng)
-        (actor_loss, (entropy, q_mean, q_std, mean_dist)), actor_grad = (
+        (actor_loss, (entropy, q_mean, q_std, mean_dist, adv)), actor_grad = (
                 _actor_loss_function(agent_state.actor.params, rng_actor)
                 )
 
@@ -411,6 +419,7 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset,
         loss = {
                     "critic_loss": critic_loss,
                     "actor_loss": actor_loss,
+                    "mean_advantage": adv,
                     "mean_action_dist": mean_dist,
                     "alpha_loss": alpha_loss,
                     "ensemble_regularizer_loss": regularizer_loss,
