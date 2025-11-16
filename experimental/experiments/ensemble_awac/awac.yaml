@@ -16,10 +16,10 @@ parameters:
     value: d4rl
   dataset-name:
     values: 
+      - antmaze-medium-diverse-v2 # changed to smaller maze
       - hopper-medium-v2
       - halfcheetah-medium-expert-v2
       - walker2d-medium-replay-v2
-      - antmaze-medium-diverse-v2 # changed to smaller maze
       - pen-human-v1
       - pen-cloned-v1
       - pen-expert-v1
@@ -69,7 +69,6 @@ parameters:
 
   beta_id:
     values: 
-      - 0.05
       - 0.1
       - 0.15
   awr_operator:

@@ -6,7 +6,7 @@ entity: ahoj
 method: random
 name: shared_awac
 program: algorithms/unified.py
-project: awac-unifloral-eval
+project: awac-shared-new-eval
 
 parameters:
   # --- Experiment ---
@@ -16,15 +16,15 @@ parameters:
     value: d4rl
   dataset-name:
     values: 
-      - hopper-medium-v2
-      - halfcheetah-medium-expert-v2
-      - walker2d-medium-replay-v2
       - antmaze-medium-diverse-v2 # changed to smaller maze
       - pen-human-v1
       - pen-cloned-v1
       - pen-expert-v1
       - maze2d-large-v1
       - kitchen-mixed-v0
+      - hopper-medium-v2
+      - halfcheetah-medium-expert-v2
+      - walker2d-medium-replay-v2
   algorithm:
     value: awac 
   num_updates:
@@ -40,14 +40,14 @@ parameters:
   log:
     value: true
   checkpoint_dir:
-    value: "./checkpoints/shared_uwac_eval"
+    value: "./checkpoints/shared_uwac_eval_newtemp"
   checkpoint:
     value: false
   # --- Generic optimization ---
   lr:
     value: 3e-4
   actor_lr:
-    value: 1e-4
+    value: 3e-4
   batch_size:
     value: 256
   gamma:
@@ -75,10 +75,9 @@ parameters:
 
   awr_temperature:
     values: 
-      - 2.0
       - 1.0
-      - 0.3
-      - 0.1
+      - 0.33
+      - 0.01
 
   num_critics:
     values: 

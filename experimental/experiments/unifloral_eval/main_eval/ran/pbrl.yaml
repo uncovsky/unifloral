@@ -4,9 +4,9 @@ command:
   - ${args_no_boolean_flags}
 entity: ahoj
 method: random
-name: msg
+name: pbrl
 program: algorithms/unified.py
-project: msg-unifloral-eval
+project: unifloral-eval-pbrl
 
 parameters:
   # --- Experiment ---
@@ -25,8 +25,9 @@ parameters:
       - pen-expert-v1
       - maze2d-large-v1
       - kitchen-mixed-v0
-  algorithm:
-    value: msg
+
+  algorithm: 
+    value: pbrl
   num_updates:
     value : 1_000_000
   eval_interval:
@@ -40,9 +41,9 @@ parameters:
   log:
     value: true
   checkpoint_dir:
-    value: "./checkpoints/msg_eval_det"
+    value: "./checkpoints/pbrl_eval_det"
   checkpoint:
-    value: true
+    value: false
   # --- Generic optimization ---
   lr:
     value: 3e-4
@@ -56,21 +57,23 @@ parameters:
     value: 0.005
 
 
-  # --- MSG specific ---
+  # --- PBRL specific ---
   critic_regularizer:
-    value: "msg"
+    value: "pbrl"
+  # ood actions sampled
+  critic_regularizer_parameter:
+    value: 4
 
   pi_operator:
-    value: "lcb"
+    value: "min"
 
   beta_id:
-    value: 0.0
+    values: [0.01, 0.001, 0.0001]
 
   # --- RANDOMIZED OVER --- 
-  actor_lcb_penalty:
-    values: [4.0, 8.0]
   critic_lagrangian:
-    values: [0, 0.1, 0.5, 1.0, 2.0, 4.0, 8.0]
+    values: [0.01, 0.1, 1.0]
+
   num_critics:
     values: [10, 30]
   

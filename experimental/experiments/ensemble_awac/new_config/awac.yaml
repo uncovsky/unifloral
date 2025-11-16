@@ -6,7 +6,7 @@ entity: ahoj
 method: random
 name: mean_awac_lower_beta
 program: algorithms/unified.py
-project: awac-unifloral-eval
+project: awac-30-eval-deterministic
 
 parameters:
   # --- Experiment ---
@@ -16,15 +16,15 @@ parameters:
     value: d4rl
   dataset-name:
     values: 
+      - antmaze-medium-diverse-v2 # changed to smaller maze
+      - pen-human-v1
+      - pen-expert-v1
+      - kitchen-mixed-v0
+      - pen-cloned-v1
+      - maze2d-large-v1
       - hopper-medium-v2
       - halfcheetah-medium-expert-v2
       - walker2d-medium-replay-v2
-      - antmaze-medium-diverse-v2 # changed to smaller maze
-      - pen-human-v1
-      - pen-cloned-v1
-      - pen-expert-v1
-      - maze2d-large-v1
-      - kitchen-mixed-v0
   algorithm:
     value: u_awac
   num_updates:
@@ -40,14 +40,14 @@ parameters:
   log:
     value: true
   checkpoint_dir:
-    value: "./checkpoints/uwac_eval"
+    value: "./checkpoints/uwac_eval_temp"
   checkpoint:
     value: false
   # --- Generic optimization ---
   lr:
     value: 3e-4
   actor_lr:
-    value: 1e-4
+    value: 3e-4
   batch_size:
     value: 256
   gamma:
@@ -69,7 +69,6 @@ parameters:
 
   beta_id:
     values: 
-      - 0.001
       - 0.01
       - 0.05
 
@@ -82,13 +81,13 @@ parameters:
 
   awr_temperature:
     values: 
-      - 2.0
+      - 1.0
       - 0.33
-      - 0.1
-      - 0.05
+      - 0.01
   num_critics:
     values: 
       - 10
+      - 30
 
 
 
