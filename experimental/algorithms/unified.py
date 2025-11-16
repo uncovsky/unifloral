@@ -87,6 +87,7 @@ class Args:
     awr_temperature: float = 1.0 # Used if operator is awr
     awr_operator : str = "min" # \in {"min", "mean"}, used to compute advantage
     awr_weight_clip: float = 100.0 # clip exp(adv / temp) to avoid large weights
+    softmax_advantages: bool = False # use softmax instead of exp for AWR
     no_entropy_bonus: bool = False # enable / disable entropy bonus
 
     # --- Critic Regularization ---
@@ -239,7 +240,6 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset,
                     actions_pi, log_probs = pi.sample_and_log_prob(seed=rng)
                     actions_pi = jnp.clip(actions_pi, -args.action_scale, args.action_scale)
 
-
                     q_pred = q_apply_fn(
                             agent_state.vec_q.params,
                             batch.obs, batch.action
@@ -272,8 +272,13 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset,
 
                     advantages = adv
                     adv = adv / args.awr_temperature
-                    exp_adv = jnp.exp(adv).clip(max=args.awr_weight_clip)
-                    exp_adv = jax.lax.stop_gradient(exp_adv)
+
+                    if args.softmax_advantages:
+                        exp_adv = nn.softmax(adv)
+
+                    else:
+                        exp_adv = jnp.exp(adv).clip(max=args.awr_weight_clip)
+                        exp_adv = jax.lax.stop_gradient(exp_adv)
 
                     loss = -(exp_adv * bc).mean()
                     entropy = -log_probs.sum(-1)
@@ -282,7 +287,7 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset,
                     actions = actions_pi
             else:
                 rng = jax.random.split(rng, args.batch_size)
-                loss, entropy, q_target, q_std, actions = jax.vmap(_compute_loss)(rng, batch)
+                loss, entropy, q_target, q_std, actions, advantages = jax.vmap(_compute_loss)(rng, batch)
 
             mean_dist = jnp.square(actions - batch.action).mean()
 
