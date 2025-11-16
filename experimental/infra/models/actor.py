@@ -18,7 +18,7 @@ class TanhGaussianActor(nn.Module):
     log_std_min: float = -5.0
 
     @nn.compact
-    def __call__(self, x):
+    def __call__(self, x, eval=False):
         for _ in range(3):
             x = nn.Dense(256, bias_init=constant(0.1))(x)
             x = nn.relu(x)
@@ -27,13 +27,17 @@ class TanhGaussianActor(nn.Module):
                 self.num_actions, kernel_init=sym(1e-3), bias_init=sym(1e-3)
                 )(x)
 
+        if eval:
+            # Deterministic policy for eval
+            pi = distrax.Deterministic(jnp.tanh(mean))
+            return pi
+
         if self.per_state_std:
             log_std = nn.Dense(
                     self.num_actions, kernel_init=sym(1e-3), bias_init=sym(1e-3)
                     )(x)
 
             std = jnp.exp(jnp.clip(log_std, self.log_std_min, self.log_std_max))
-
             pi = distrax.Transformed(
                     distrax.Normal(mean, std),
                     distrax.Tanh(),
@@ -50,13 +54,11 @@ class TanhGaussianActor(nn.Module):
                 init_fn=lambda key: jnp.zeros(self.num_actions, dtype=jnp.float32),
             )
 
-            mean = jnp.tanh(mean)
-            std = jnp.exp(jnp.clip(log_std, self.log_std_min, self.log_std_max))
 
+            std = jnp.exp(jnp.clip(log_std, self.log_std_min, self.log_std_max))
             # Clipped normal distribution. 
             # Action clipping is handled during eval.
-            pi = distrax.Normal(mean, std)
-
+            pi = distrax.Normal(jnp.tanh(mean), std)
 
         return pi
 

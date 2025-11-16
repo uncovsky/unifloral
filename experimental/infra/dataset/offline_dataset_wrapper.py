@@ -282,7 +282,7 @@ def eval_agent_gym(args, rng, env, agent_state):
     @jax.jit
     @jax.vmap
     def _policy_step(rng, obs):
-        pi = agent_state.actor.apply_fn(agent_state.actor.params, obs)
+        pi = agent_state.actor.apply_fn(agent_state.actor.params, obs, eval=True)
         action = pi.sample(seed=rng)
         return jnp.nan_to_num(action).clip(-1.0, 1.0)
 
@@ -329,7 +329,7 @@ def eval_agent_gymnasium(args, rng, env, agent_state):
     @jax.jit
     @jax.vmap
     def _policy_step(rng, obs):
-        pi = agent_state.actor.apply_fn(agent_state.actor.params, obs)
+        pi = agent_state.actor.apply_fn(agent_state.actor.params, obs, eval=True)
         action = pi.sample(seed=rng)
         return jnp.nan_to_num(action).clip(-1.0, 1.0)
 
