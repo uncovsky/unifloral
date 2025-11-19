@@ -6,7 +6,7 @@ entity: ahoj
 method: random
 name: msg
 program: algorithms/unified.py
-project: unifloral-eval
+project: msg-unifloral-eval
 
 parameters:
   # --- Experiment ---
@@ -70,7 +70,7 @@ parameters:
   actor_lcb_penalty:
     values: [4.0, 8.0]
   critic_lagrangian:
-    values: [0, 0.1, 0.5, 1.0]
+    values: [0, 0.1, 0.5, 1.0, 2.0, 4.0, 8.0]
   num_critics:
     values: [10, 30]
   

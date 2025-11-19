@@ -40,7 +40,7 @@ parameters:
   log:
     value: true
   checkpoint_dir:
-    value: "./checkpoints/msg_eval"
+    value: "./checkpoints/msg_eval_det"
   checkpoint:
     value: true
   # --- Generic optimization ---
@@ -70,7 +70,7 @@ parameters:
   actor_lcb_penalty:
     values: [4.0, 8.0]
   critic_lagrangian:
-    values: [0, 0.5, 1.0, 2.0, 4.0, 8.0]
+    values: [0, 0.1, 0.5, 1.0]
   num_critics:
     values: [10, 30]
   
