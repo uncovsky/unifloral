@@ -348,7 +348,7 @@ def bootstrap_bandit_trials(
 
 
 if __name__ == "__main__":
-    df = load_results_dataframe("vis_data/unifloral_eval")
+    df = load_results_dataframe("unifloral_eval")
 
     # Create wider figure (adjust the ratio to be wider)
     #fig, axes = plt.subplots(3, 3, figsize=set_size(width_fraction=0.5,
@@ -365,7 +365,17 @@ if __name__ == "__main__":
     colors = plt.cm.tab10.colors[:len(algorithms)]
     color_map = {algorithm: color for algorithm, color in zip(algorithms, colors)}
 
-    print(datasets)
+    datasets = [
+            "halfcheetah-medium-expert-v2",
+            "hopper-medium-v2",
+            "walker2d-medium-replay-v2",
+            'pen-human-v1',
+            'pen-cloned-v1',
+            'pen-expert-v1',
+            'antmaze-medium-diverse-v2',
+            'maze2d-large-v1',
+            'kitchen-mixed-v0'
+    ]
 
     for idx, dataset in enumerate(datasets):
         ax = axes[idx]
@@ -377,7 +387,6 @@ if __name__ == "__main__":
             # Some entries erroneously had extra runs. Trim to first 10.
             returns_list = returns_list[:10]
             returns_array = jnp.array(returns_list)
-            print(len(returns_array), dataset, algorithm)
 
             results = bootstrap_bandit_trials(
                 returns_array,
@@ -440,4 +449,4 @@ if __name__ == "__main__":
 
     plt.tight_layout()
     plt.subplots_adjust(bottom=0.20)  # Increase bottom margin for legend
-    plt.savefig("figures/eval.pdf", dpi=300, bbox_inches='tight')
+    plt.savefig("figures/full_eval.pdf", dpi=300, bbox_inches='tight')

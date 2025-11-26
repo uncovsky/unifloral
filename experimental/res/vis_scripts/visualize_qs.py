@@ -191,7 +191,6 @@ def visualize(q_file, actions_file, title=None, normalize=False):
     cbar.set_ticks(cbar_ticks)
     cbar.set_ticklabels([f"{int(round(x))}" for x in cbar_ticks])
     # Save figure with explicit bounding box to include LaTeX labels
-
     filename = q_file.replace(".npy", "_q_single.pdf")
     fig.savefig("figures/" + filename, bbox_inches="tight", pad_inches=0.2, dpi=300)
 
@@ -199,11 +198,11 @@ def visualize(q_file, actions_file, title=None, normalize=False):
 print("cql vs edac expert")
 visualize_multiple_relative(
         [
-            ("vis_data/3d_vis/new_figures/sacn+10+cql+lag=0.5_seed=0_hopper-expert-v2.npy",
-             "vis_data/3d_vis/new_figures/sacn+10+cql+lag=0.5_seed=0_hopper-expert-v2_actions.npy"),
-            ("vis_data/3d_vis/new_figures/sacn+10+none+lag=0.5_seed=0_hopper-expert-v2.npy",
-             "vis_data/3d_vis/new_figures/sacn+10+none+lag=0.5_seed=0_hopper-expert-v2_actions.npy"),
+            ("../vis_data/3d_vis/new_figures/sacn+10+cql+lag=0.5_seed=0_hopper-expert-v2.npy",
+             "../vis_data/3d_vis/new_figures/sacn+10+cql+lag=0.5_seed=0_hopper-expert-v2_actions.npy"),
+            ("../vis_data/3d_vis/new_figures/sacn+10+none+lag=0.5_seed=0_hopper-expert-v2.npy",
+             "../vis_data/3d_vis/new_figures/sacn+10+none+lag=0.5_seed=0_hopper-expert-v2_actions.npy"),
         ],
-        titles=["$\mathcal{R}_{CQL}$", "$\mathcal{R}_{EDAC}$"],
+        titles=["$\mathcal{R}_{MSG}$", "$\mathcal{R}_{EDAC}$"],
         show_actions=False
 )
