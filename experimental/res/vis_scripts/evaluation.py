@@ -3,15 +3,19 @@ from tex_setup import set_size
 """
 
     Runs UCB evaluation from Unifloral.
-    - taken entirely from unifloral, except for visualization
-    pipeline.
-
+    - taken entirely from unifloral, except for data & visualization pipeline.
 
 
 This module provides tools for:
 1. Loading and parsing experiment results
 2. Running bandit-based policy selection 
 3. Computing confidence intervals via bootstrapping 
+
+
+
+Evaluation:
+        Subsample 5 policies from the trained 10 (500 times)
+        Run bandit trial for 100 pulls, estimate best policy at each step
 """
 
 from collections import namedtuple
@@ -335,7 +339,12 @@ def bootstrap_bandit_trials(
     pulls, estimated_bests = run_bandit_trials(
         returns_array, seed, num_subsample, num_repeats, max_pulls, ucb_alpha
     )
+
+    # Estimated bests has shape (num_repeats, max_pulls)
     vmap_bootstrap = jax.vmap(bootstrap_confidence_interval, in_axes=(0, 1, None, None))
+
+    # bootstrap CI for each pull step
+
     ci_low, ci_high = vmap_bootstrap(rng, estimated_bests, n_bootstraps, confidence)
     estimated_bests_mean = estimated_bests.mean(axis=0)
 
@@ -349,6 +358,7 @@ def bootstrap_bandit_trials(
 
 if __name__ == "__main__":
     df = load_results_dataframe("unifloral_eval")
+    #df = load_results_dataframe("uwac_eval")
 
     # Create wider figure (adjust the ratio to be wider)
     #fig, axes = plt.subplots(3, 3, figsize=set_size(width_fraction=0.5,
@@ -365,28 +375,69 @@ if __name__ == "__main__":
     colors = plt.cm.tab10.colors[:len(algorithms)]
     color_map = {algorithm: color for algorithm, color in zip(algorithms, colors)}
 
+    all_results = {}
+
     datasets = [
-            "halfcheetah-medium-expert-v2",
-            "hopper-medium-v2",
-            "walker2d-medium-replay-v2",
-            'pen-human-v1',
-            'pen-cloned-v1',
-            'pen-expert-v1',
-            'antmaze-medium-diverse-v2',
-            'maze2d-large-v1',
-            'kitchen-mixed-v0'
+        "halfcheetah-medium-expert-v2",
+        'hopper-medium-v2',
+        'walker2d-medium-replay-v2',
+        'pen-human-v1',
+        'pen-cloned-v1',
+        'pen-expert-v1',
+        'antmaze-medium-diverse-v2',
+        'maze2d-large-v1',
+        'kitchen-mixed-v0',
     ]
 
     for idx, dataset in enumerate(datasets):
         ax = axes[idx]
+
+        all_results[dataset] = {}
         
         for algorithm in algorithms:
             color = color_map[algorithm]
-            returns_list = df[(df.dataset == dataset) & (df.algorithm == algorithm)]["final_scores"].tolist()
+
+
+            df_sel = df[(df.dataset == dataset) & (df.algorithm == algorithm)]
+            returns_list = df_sel["final_scores"].tolist()
+
 
             # Some entries erroneously had extra runs. Trim to first 10.
             returns_list = returns_list[:10]
             returns_array = jnp.array(returns_list)
+
+            if len(returns_array) == 0:
+                continue
+
+            # final_scores_mean
+            means_list = df_sel["final_scores_mean"].tolist()[:10]
+            stds_list = df_sel["final_scores_std"].tolist()[:10]
+
+            
+            mean_of_means = np.mean(means_list)
+            median_of_means = np.median(means_list)
+            std_of_means = np.std(means_list)
+
+            best_idx = np.argmax(means_list)
+            median_idx = np.argsort(means_list)[len(means_list) // 2]
+
+            best_mean = means_list[best_idx]
+            best_std = stds_list[best_idx]
+            median_mean = means_list[median_idx]
+            median_std = stds_list[median_idx]
+
+            # save all
+
+            # Store info for this algorithm
+            all_results[dataset][algorithm] = {
+                "mean_of_means": float(mean_of_means),
+                "median_of_means": float(median_of_means),
+                "std_of_means": float(std_of_means),
+                "best_mean": float(best_mean),
+                "best_std": float(best_std),
+                "median_mean": float(median_mean),
+                "median_std": float(median_std),
+            }
 
             results = bootstrap_bandit_trials(
                 returns_array,
@@ -449,4 +500,25 @@ if __name__ == "__main__":
 
     plt.tight_layout()
     plt.subplots_adjust(bottom=0.20)  # Increase bottom margin for legend
-    plt.savefig("figures/full_eval.pdf", dpi=300, bbox_inches='tight')
+    plt.savefig("figures/eval_full.pdf", dpi=300, bbox_inches='tight')
+
+    rows = []
+    for dataset, algos in all_results.items():
+        for algorithm, stats in algos.items():
+            row = {
+                "dataset": dataset,
+                "algorithm": algorithm,
+                "mean_of_means": stats.get("mean_of_means", None),
+                "median_of_means": stats.get("median_of_means", None),
+                "std_of_means": stats.get("std_of_means", None),
+                "best_mean": stats.get("best_mean", None),
+                "best_std": stats.get("best_std", None),
+                "median_mean": stats.get("median_mean", None),
+                "median_std": stats.get("median_std", None),
+            }
+            rows.append(row)
+
+    # Convert to DataFrame
+    df = pd.DataFrame(rows)
+    # Save as CSV
+    df.to_csv("gt_results.csv", index=False)
