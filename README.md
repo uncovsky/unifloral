@@ -14,7 +14,9 @@ And can be extended to accommodate other modifications of these algorithms with 
 - **RORL** — [RORL: Robust Offline Reinforcement Learning via Conservative Smoothing](https://arxiv.org/abs/2206.02829)
 
 
-The framework and evaluation protocol are built upon the Unifloral library available [here](https://github.com/EmptyJackson/unifloral).
+The framework and evaluation protocol are built upon the Unifloral library available [here](https://github.com/EmptyJackson/unifloral). 
+
+To see how the algorithms are implemented inside the framework, refer to the last section of this README.
 
 
 ## Setting up the container:
@@ -60,6 +62,10 @@ All of the code is located in the directory `ensemble_offline_rl`
     - `models/` - actor and critic networks, taken from unifloral + added randomized prior network support
     - `utils/` - logging for visualizations, diversity of ensemble predictions, scheduling of Lagrangians, etc.
 - The subdirectory `results` contains all the data from experiments + visualization scripts, and figures from the thesis.
+
+### Summary of Training Loop
+The training logic shared by all algorithms is implemented in the function *make_train_step()* * `algorithms/unified.py`. This training loop is instantiated with selected critic and ensemble (diversity) regularization terms, which 
+are specified via CLI arguments and implemented in their respective `infra/` entries. To see how different hyperparameters from the original algorithms map to parameters of the framework, refer to the `configs` directory.
 
 
 
