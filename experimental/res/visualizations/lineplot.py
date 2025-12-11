@@ -48,7 +48,7 @@ if __name__ == "__main__":
     # load to big df
     df_list = []
     for x in [10, 20, 30]:
-        df = pd.read_csv(f"vis_data/lineplots/edac{x}.csv")
+        df = pd.read_csv(f"../vis_data/lineplots/edac{x}.csv")
         df["N"] = x
         df["Step"] = df["Step"] * (14 / 4)
 
@@ -70,4 +70,40 @@ if __name__ == "__main__":
 
     fig.savefig("figures/edac_lineplot.pdf", bbox_inches='tight', dpi=300)
 
+
+    """
+        UWAC and AWAC Q-plots
+    """
+    df_awac = pd.read_csv("../vis_data/awac_plots/awac_q_values_pen_human.csv")
+    df_uwac = pd.read_csv("../vis_data/awac_plots/uwac_q_values_pen_human.csv")
+
+    # Select all sweeps
+    awac_mean_cols = [col for col in df_awac.columns if "q_pred_mean" in col and "__" not in col]
+    uwac_mean_cols = [col for col in df_uwac.columns if "q_pred_mean" in col and "__" not in col]
+    df_awac['q_mean_avg'] = df_awac[awac_mean_cols].mean(axis=1)
+    df_uwac['q_mean_avg'] = df_uwac[uwac_mean_cols].mean(axis=1)
+    df_merged = pd.merge(df_awac[['Step', 'q_mean_avg']], 
+                         df_uwac[['Step', 'q_mean_avg']], 
+                         on='Step', 
+                         suffixes=('_awac', '_uwac'))
+
+    df_awac['Method'] = 'AWAC'
+    df_uwac['Method'] = 'U-AWAC'
+    df_both = pd.concat([df_awac[['Step','q_mean_avg','Method']],
+                         df_uwac[['Step','q_mean_avg','Method']]], ignore_index=True)
+
+    fig, axes = plt.subplots(1, 2, figsize=(12, 4), sharey=True)
+    sns.lineplot(ax=axes[0], data=df_both[df_both['Method']=='AWAC'],
+                 x='Step', y='q_mean_avg', label='AWAC')
+    axes[0].set_title('AWAC Q-values')
+    axes[0].set_xlabel('Step')
+    axes[0].set_ylabel('Q-value')
+
+    sns.lineplot(ax=axes[1], data=df_both[df_both['Method']=='U-AWAC'],
+                 x='Step', y='q_mean_avg', label='U-AWAC', color='orange')
+    axes[1].set_title('U-AWAC Q-values')
+    axes[1].set_xlabel('Step')
+
+    plt.tight_layout()
+    plt.show()
 

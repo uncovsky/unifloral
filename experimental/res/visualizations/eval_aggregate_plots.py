@@ -15,7 +15,7 @@ from tex_setup import set_size
 """
 
 # Fetch results
-df = load_results_dataframe("unifloral_eval")
+df = load_results_dataframe("filter_eval")
 algorithms = sorted(df['algorithm'].unique())
 datasets = sorted(df['dataset'].unique())
 result_dict = {}
@@ -41,50 +41,6 @@ for algorithm in algorithms:
 
     result_dict[algorithm] = results
 
-thresholds = np.linspace(0.0, 100.0, 101)
-score_distributions, score_cis = rly.create_performance_profile(
-    result_dict, thresholds
-)
-
-
-
-colors = {algo: plt.cm.tab10(i) for i, algo in enumerate(algorithms)}
-fig, ax = plt.subplots(figsize=set_size(width_fraction=1.0, height_fraction=0.3))
-plot_utils.plot_performance_profiles(
-  score_distributions, thresholds,
-  performance_profile_cis=score_cis,
-  colors=dict(zip(algorithms, sns.color_palette('colorblind'))),
-  xlabel=r'D4RL Normalized Score $(\tau)$',
-  ax=ax)
-plt.title('Performance Profile Across Datasets')
-
-
-from matplotlib.lines import Line2D
-handles = [Line2D([0], [0], color=colors[algorithm], lw=6, 
-                label=algorithm.replace('_', ' ').upper(),
-                markersize=12)  #Increased line width for larger appearance
-           for algorithm in algorithms]
-
-legend = fig.legend(
-    handles=handles,
-    labels=algorithms,
-    loc='upper center',
-    bbox_to_anchor=(0.5, 1.05),  #position above the plot
-    ncol=len(algorithms),
-    frameon=True,  #enable border
-    handlelength=0.5,
-    fancybox=True,  #rounded corners
-    framealpha=0.9, #slightly transparent
-    borderpad=0.75,
-    edgecolor='black',  #border color
-    fontsize=8,
-)
-
-plt.tight_layout()
-plt.subplots_adjust(top=0.85)  
-
-plt.savefig("figures/perf.pdf", dpi=300, bbox_inches='tight')
-
 
 
 from scipy.stats import gaussian_kde
@@ -101,6 +57,7 @@ def plot_violin_by_dataset_groups(df_long, dataset_group, result_path="figures",
     if algorithms is not None:
         df_group = df_group[df_group["algorithm"].isin(algorithms)]
 
+
     fig, axes = plt.subplots(1, n_datasets, figsize=set_size(width_fraction), sharey=True)
     if n_datasets == 1:
         axes = [axes]
@@ -108,7 +65,6 @@ def plot_violin_by_dataset_groups(df_long, dataset_group, result_path="figures",
     for ax, dataset in zip(axes, dataset_group):
         df_ds = df_group[df_group["dataset"] == dataset]
         algos = sorted(df_ds["algorithm"].unique())
-        print(len(algos), algos)
 
         sns.violinplot(
             data=df_ds,
@@ -299,7 +255,7 @@ df_long['dataset'] = df_long['dataset'].astype(str)
 df_long['algorithm'] = df_long['algorithm'].astype(str)
 
 
-algorithms = ['cql', 'edac', 'msg', 'pbrl', 'rebrac', 'sac_n']
+#algorithms = ['cql', 'edac', 'msg', 'pbrl', 'rebrac', 'sac_n']
 
 
 #plot_violin_by_dataset_groups(df_long, adroit_datasets, algorithms=algorithms,
@@ -309,23 +265,23 @@ algorithms = ['cql', 'edac', 'msg', 'pbrl', 'rebrac', 'sac_n']
 plot_violin_aggregate(df_long, algorithms=algorithms,
                       width_fraction=0.5, height_fraction=0.25,
                       datasets=adroit_datasets,
-                      ext="adroit_franka",
+                      ext="filter_adroit_franka",
                       title="")
 
 plot_violin_aggregate(df_long, algorithms=algorithms,
                       width_fraction=0.5, height_fraction=0.25,
                       datasets=['pen-expert-v1'],
-                      ext="adroit_expert",
+                      ext="filter_adroit_expert",
                       title="")
 
 plot_violin_aggregate(df_long, algorithms=algorithms,
                       width_fraction=0.5, height_fraction=0.25,
                       datasets=mujoco_datasets,
-                      ext="mujoco",
+                      ext="filter_mujoco",
                       title="")
 
 plot_violin_aggregate(df_long, algorithms=algorithms,
                       width_fraction=0.5, height_fraction=0.25,
                       datasets=maze_datasets,
-                      ext="maze",
+                      ext="filter_maze",
                       title="")

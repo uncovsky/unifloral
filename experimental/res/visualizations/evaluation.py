@@ -76,6 +76,11 @@ def parse_and_load_npz(filename: str) -> Dict:
     data["dataset"] = dataset
     data["datetime"] = dt_str
     data.update(data.pop("args", np.array({})).item())  # Flatten args
+
+    if data["algorithm"] == "awac" and data["num_critics"] > 2:
+        data["algorithm"] = f"awac_n"
+    if data["algorithm"] == "pbrl" and data["critic_regularizer"] == "filtered_pbrl":
+        data["algorithm"] = f"pbrl_f"
     return data
 
 
@@ -357,10 +362,21 @@ def bootstrap_bandit_trials(
 
 
 if __name__ == "__main__":
-    df = load_results_dataframe("unifloral_eval")
-    #df = load_results_dataframe("uwac_eval")
+    """
+        generates the ucb evaluation plots for all algos/datasets
 
-    # Create wider figure (adjust the ratio to be wider)
+        switch between full eval / uwac eval / filtering eval
+    """
+
+    # Full evaluation data
+    df = load_results_dataframe("full_eval_data")
+
+    # PBRL filtering data
+    #df = load_results_dataframe("filter_eval_data")
+
+    # UWAC evaluation data (for ablation and full eval)
+    # df = load_results_dataframe("uawac_eval_data")
+
     #fig, axes = plt.subplots(3, 3, figsize=set_size(width_fraction=0.5,
     #                                                height_fraction=0.5, subplots=(3, 3)), 
                              #sharex=True, sharey=False)
@@ -372,9 +388,8 @@ if __name__ == "__main__":
     algorithms = df["algorithm"].unique()
 
     # Create consistent color mapping for algorithms
-    colors = plt.cm.tab10.colors[:len(algorithms)]
-    color_map = {algorithm: color for algorithm, color in zip(algorithms, colors)}
-
+    colors = plt.cm.tab10.colors[:10]
+    color_map = {alg: colors[i % len(colors)] for i, alg in enumerate(algorithms)}
     all_results = {}
 
     datasets = [
@@ -388,6 +403,45 @@ if __name__ == "__main__":
         'maze2d-large-v1',
         'kitchen-mixed-v0',
     ]
+
+
+    """
+     Can further limit algos here, we use AWAC variants for critic ablation
+        also fixed colors for plots
+
+        awac ablation, don't show pbrl/rebrac
+    algorithms = [
+        "u_awac",
+        "awac",
+        "awac_n",
+    ]
+
+    color_map = {
+            "u_awac": colors[0],
+            "awac": colors[3],
+            "awac_n": colors[1],
+    }
+
+        PBRL filtering plots
+    color_map = {
+            "rebrac": colors[5],
+            "pbrl": colors[4],
+            "pbrl_f": colors[1],
+    }
+
+        AWAC full eval, don't show awac-n
+    algorithms = [
+            "rebrac", "u_awac", "awac", "pbrl",
+            ]
+    color_map = {
+            "rebrac": colors[5],
+            "pbrl": colors[4],
+            "u_awac": colors[0],
+            "awac": colors[3],
+    }
+    """
+
+    print("Evaluating algorithms:", algorithms)
 
     for idx, dataset in enumerate(datasets):
         ax = axes[idx]
@@ -475,7 +529,7 @@ if __name__ == "__main__":
     from matplotlib.lines import Line2D
 
     legend_handles = [Line2D([0], [0], color=color_map[algorithm], lw=4,
-                             label=algorithm.replace('_', ' ').upper(),
+                             label=algorithm.replace('_', '-').upper(),
                              markersize=8)
                       for algorithm in algorithms]
 
