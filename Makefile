@@ -1,3 +1,5 @@
+.PHONY: build up down
+
 build:
 	git pull
 	docker build . -t unifloral
