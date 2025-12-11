@@ -1,3 +1,6 @@
 wandb/
 dynamics_models/
 final_returns/
+*.png
+*.csv
+**/__pycache__/

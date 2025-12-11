@@ -1,0 +1,93 @@
+command:
+  - python3
+  - ${program}
+  - ${args_no_boolean_flags}
+entity: ahoj
+method: random
+name: independent_awac
+program: algorithms/unified.py
+project: awac-unifloral-eval
+
+parameters:
+  # --- Experiment ---
+  seed:
+    values: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+  dataset-source:
+    value: d4rl
+  dataset-name:
+    values: 
+      - antmaze-medium-diverse-v2 # changed to smaller maze
+      - hopper-medium-v2
+      - halfcheetah-medium-expert-v2
+      - walker2d-medium-replay-v2
+      - pen-human-v1
+      - pen-cloned-v1
+      - pen-expert-v1
+      - maze2d-large-v1
+      - kitchen-mixed-v0
+  algorithm:
+    value: u_awac
+  num_updates:
+    value : 1_000_000
+  eval_interval:
+    value: 10_000
+  eval_workers:
+    value: 8
+  eval_final_episodes:
+    value: 1000
+
+  # --- Logging ---
+  log:
+    value: true
+  checkpoint_dir:
+    value: "./checkpoints/uwac_eval"
+  checkpoint:
+    value: false
+  # --- Generic optimization ---
+  lr:
+    value: 3e-4
+  actor_lr:
+    value: 1e-4
+  batch_size:
+    value: 256
+  gamma:
+    value: 0.99
+  polyak_step_size:
+    value: 0.005
+
+  no_entropy_bonus:
+    value: true
+
+  shared_targets:
+    values:
+      - false
+
+  # --- PBRL specific ---
+  critic_regularizer:
+    values: 
+      - "none"
+
+  beta_id:
+    values: 
+      - 0.1
+      - 0.15
+  awr_operator:
+    values:
+      - "min"
+
+  pi_operator:
+    value: "awr"
+
+  awr_temperature:
+    values: 
+      - 2.0
+      - 0.3
+      - 0.1
+      - 0.05
+  num_critics:
+    values: 
+      - 10
+
+
+
+  

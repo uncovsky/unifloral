@@ -7,6 +7,7 @@ import warnings
 import distrax
 import d4rl
 import flax.linen as nn
+from flax.linen.initializers import constant, uniform
 from flax.training.train_state import TrainState
 import gym
 import jax
@@ -16,8 +17,6 @@ import optax
 import tyro
 import wandb
 
-from infra.offline_dataset_wrapper import OfflineDatasetWrapper
-
 os.environ["XLA_FLAGS"] = "--xla_gpu_triton_gemm_any=True"
 
 
@@ -25,9 +24,8 @@ os.environ["XLA_FLAGS"] = "--xla_gpu_triton_gemm_any=True"
 class Args:
     # --- Experiment ---
     seed: int = 0
-    dataset_source : str = "d4rl"
     dataset_name: str = "halfcheetah-medium-v2"
-    algorithm: str = "td3_bc"
+    algorithm: str = "rebrac"
     num_updates: int = 1_000_000
     eval_interval: int = 2500
     eval_workers: int = 8
@@ -38,15 +36,20 @@ class Args:
     wandb_team: str = "flair"
     wandb_group: str = "debug"
     # --- Generic optimization ---
-    lr: float = 3e-4
-    batch_size: int = 256
+    lr: float = 1e-3
+    batch_size: int = 1024
     gamma: float = 0.99
     polyak_step_size: float = 0.005
     # --- TD3+BC ---
-    td3_alpha: float = 2.5
     noise_clip: float = 0.5
     policy_noise: float = 0.2
     num_critic_updates_per_step: int = 2
+    # --- REBRAC ---
+    critic_bc_coef: float = 0.01
+    actor_bc_coef: float = 0.001
+    actor_ln: bool = False
+    critic_ln: bool = True
+    norm_obs: bool = False
 
 
 r"""
@@ -62,27 +65,40 @@ r"""
 AgentTrainState = namedtuple(
     "AgentTrainState", "actor actor_target dual_q dual_q_target"
 )
-Transition = namedtuple("Transition", "obs action reward next_obs done")
+Transition = namedtuple("Transition", "obs action reward next_obs next_action done")
+
+
+def sym(scale):
+    def _init(*args, **kwargs):
+        return uniform(2 * scale)(*args, **kwargs) - scale
+
+    return _init
 
 
 class SoftQNetwork(nn.Module):
     obs_mean: jax.Array
     obs_std: jax.Array
+    use_ln: bool
+    norm_obs: bool
 
     @nn.compact
     def __call__(self, obs, action):
-        obs = (obs - self.obs_mean) / (self.obs_std + 1e-3)
+        if self.norm_obs:
+            obs = (obs - self.obs_mean) / (self.obs_std + 1e-3)
         x = jnp.concatenate([obs, action], axis=-1)
-        for _ in range(2):
-            x = nn.Dense(256)(x)
+        for _ in range(3):
+            x = nn.Dense(256, bias_init=constant(0.1))(x)
             x = nn.relu(x)
-        q = nn.Dense(1)(x)
+            x = nn.LayerNorm()(x) if self.use_ln else x
+        q = nn.Dense(1, bias_init=sym(3e-3), kernel_init=sym(3e-3))(x)
         return q.squeeze(-1)
 
 
 class DualQNetwork(nn.Module):
     obs_mean: jax.Array
     obs_std: jax.Array
+    use_ln: bool
+    norm_obs: bool
 
     @nn.compact
     def __call__(self, obs, action):
@@ -94,7 +110,8 @@ class DualQNetwork(nn.Module):
             out_axes=-1,
             axis_size=2,  # Two Q networks
         )
-        q_values = vmap_critic(self.obs_mean, self.obs_std)(obs, action)
+        q_fn = vmap_critic(self.obs_mean, self.obs_std, self.use_ln, self.norm_obs)
+        q_values = q_fn(obs, action)
         return q_values
 
 
@@ -102,14 +119,19 @@ class DeterministicTanhActor(nn.Module):
     num_actions: int
     obs_mean: jax.Array
     obs_std: jax.Array
+    use_ln: bool
+    norm_obs: bool
 
     @nn.compact
     def __call__(self, x):
-        x = (x - self.obs_mean) / (self.obs_std + 1e-3)
-        for _ in range(2):
-            x = nn.Dense(256)(x)
+        if self.norm_obs:
+            x = (x - self.obs_mean) / (self.obs_std + 1e-3)
+        for _ in range(3):
+            x = nn.Dense(256, bias_init=constant(0.1))(x)
             x = nn.relu(x)
-        action = nn.Dense(self.num_actions)(x)
+            x = nn.LayerNorm()(x) if self.use_ln else x
+        init_fn = sym(1e-3)
+        action = nn.Dense(self.num_actions, bias_init=init_fn, kernel_init=init_fn)(x)
         pi = distrax.Transformed(
             distrax.Deterministic(action),
             distrax.Tanh(),
@@ -174,7 +196,7 @@ r"""
 """
 
 
-def make_train_step(args, actor_apply_fn, q_apply_fn, dataset):
+def make_train_step(args, actor_apply_fn, q_apply_fn, dataset_name):
     """Make JIT-compatible agent train step."""
 
     def _train_step(runner_state, _):
@@ -183,9 +205,9 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, dataset):
         # --- Sample batch ---
         rng, rng_batch = jax.random.split(rng)
         batch_indices = jax.random.randint(
-            rng_batch, (args.batch_size,), 0, len(dataset.obs)
+            rng_batch, (args.batch_size,), 0, len(dataset_name.obs)
         )
-        batch = jax.tree_util.tree_map(lambda x: x[batch_indices], dataset)
+        batch = jax.tree_util.tree_map(lambda x: x[batch_indices], dataset_name)
 
         # --- Update critics ---
         def _update_critics(runner_state, _):
@@ -202,31 +224,35 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, dataset):
                 noise *= args.policy_noise
                 noise = jnp.clip(noise, -args.noise_clip, args.noise_clip)
                 action = jnp.clip(action + noise, -1, 1)
+                bc_loss = jnp.square(action - transition.next_action).sum()
 
                 # --- Compute targets ---
                 target_q = q_apply_fn(
                     agent_state.dual_q_target.params, next_obs, action
                 )
-                next_q_value = (1.0 - transition.done) * jnp.min(target_q)
-                return transition.reward + args.gamma * next_q_value
+                next_q_value = jnp.min(target_q) - args.critic_bc_coef * bc_loss
+                next_q_value = (1.0 - transition.done) * next_q_value
+                return transition.reward + args.gamma * next_q_value, bc_loss
 
             rng, rng_targets = jax.random.split(rng)
             rng_targets = jax.random.split(rng_targets, args.batch_size)
-            targets = jax.vmap(_compute_target)(rng_targets, batch)
+            target_fn = jax.vmap(_compute_target)
+            targets, bc_loss = target_fn(rng_targets, batch)
 
             # --- Compute critic loss ---
             @jax.value_and_grad
             def _q_loss_fn(params):
                 q_pred = q_apply_fn(params, batch.obs, batch.action)
-                return jnp.square(q_pred - jnp.expand_dims(targets, axis=-1)).mean()
+                q_loss = jnp.square(q_pred - jnp.expand_dims(targets, axis=-1)).sum(-1)
+                return q_loss.mean()
 
             q_loss, q_grad = _q_loss_fn(agent_state.dual_q.params)
             updated_q_state = agent_state.dual_q.apply_gradients(grads=q_grad)
             agent_state = agent_state._replace(dual_q=updated_q_state)
-            return (rng, agent_state), q_loss
+            return (rng, agent_state), (q_loss, bc_loss)
 
         # --- Iterate critic update ---
-        (rng, agent_state), q_loss = jax.lax.scan(
+        (rng, agent_state), (q_loss, critic_bc_loss) = jax.lax.scan(
             _update_critics,
             (rng, agent_state),
             None,
@@ -239,13 +265,13 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, dataset):
                 pi = actor_apply_fn(params, transition.obs)
                 pi_action = pi.sample(seed=None)
                 q = q_apply_fn(agent_state.dual_q.params, transition.obs, pi_action)
-                bc_loss = jnp.square(pi_action - transition.action).mean()
-                return q[0], bc_loss
+                bc_loss = jnp.square(pi_action - transition.action).sum()
+                return q.min(), bc_loss
 
             q, bc_loss = jax.vmap(_transition_loss)(batch)
-            lambda_ = args.td3_alpha / (jnp.abs(q).mean() + 1e-7)
+            lambda_ = 1.0 / (jnp.abs(q).mean() + 1e-7)
             lambda_ = jax.lax.stop_gradient(lambda_)
-            actor_loss = -lambda_ * q.mean() + bc_loss.mean()
+            actor_loss = -lambda_ * q.mean() + args.actor_bc_coef * bc_loss.mean()
             return actor_loss.mean(), (q.mean(), lambda_.mean(), bc_loss.mean())
 
         loss_fn = jax.value_and_grad(_actor_loss_function, has_aux=True)
@@ -276,6 +302,7 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, dataset):
             "q_mean": q_mean,
             "lambda": lambda_,
             "bc_loss": bc_loss,
+            "critic_bc_loss": critic_bc_loss.mean(),
         }
         return (rng, agent_state), loss
 
@@ -297,29 +324,27 @@ if __name__ == "__main__":
             job_type="train_agent",
         )
 
-    dataset_wrapper = OfflineDatasetWrapper(source=args.dataset_source,
-                                            dataset=args.dataset_name)
-    # --- Initialize environment and dataset ---
-    rng, rng_env = jax.random.split(rng)
-    env = dataset_wrapper.get_eval_env(args.eval_workers, rng_env)
-
-    dataset = dataset_wrapper.get_dataset()
-    dataset = Transition(
-        obs=jnp.array(dataset["observations"]),
-        action=jnp.array(dataset["actions"]),
-        reward=jnp.array(dataset["rewards"]),
-        next_obs=jnp.array(dataset["next_observations"]),
-        done=jnp.array(dataset["terminals"]),
+    # --- Initialize environment and dataset_name ---
+    env = gym.vector.make(args.dataset_name, num_envs=args.eval_workers)
+    dataset_name = d4rl.qlearning_dataset(gym.make(args.dataset_name))
+    dataset_name = Transition(
+        obs=jnp.array(dataset_name["observations"]),
+        action=jnp.array(dataset_name["actions"]),
+        reward=jnp.array(dataset_name["rewards"]),
+        next_obs=jnp.array(dataset_name["next_observations"]),
+        next_action=jnp.roll(dataset_name["actions"], -1, axis=0),
+        done=jnp.array(dataset_name["terminals"]),
     )
 
     # --- Initialize agent and value networks ---
     num_actions = env.single_action_space.shape[0]
-    obs_mean = dataset.obs.mean(axis=0)
-    obs_std = jnp.nan_to_num(dataset.obs.std(axis=0), nan=1.0)
+    obs_mean = dataset_name.obs.mean(axis=0)
+    obs_std = jnp.nan_to_num(dataset_name.obs.std(axis=0), nan=1.0)
     dummy_obs = jnp.zeros(env.single_observation_space.shape)
     dummy_action = jnp.zeros(num_actions)
-    actor_net = DeterministicTanhActor(num_actions, obs_mean, obs_std)
-    q_net = DualQNetwork(obs_mean, obs_std)
+    actor_cls = DeterministicTanhActor
+    actor_net = actor_cls(num_actions, obs_mean, obs_std, args.actor_ln, args.norm_obs)
+    q_net = DualQNetwork(obs_mean, obs_std, args.critic_ln, args.norm_obs)
 
     # Target networks share seeds to match initialization
     rng, rng_actor, rng_q = jax.random.split(rng, 3)
@@ -331,7 +356,7 @@ if __name__ == "__main__":
     )
 
     # --- Make train step ---
-    _agent_train_step_fn = make_train_step(args, actor_net.apply, q_net.apply, dataset)
+    _agent_train_step_fn = make_train_step(args, actor_net.apply, q_net.apply, dataset_name)
 
     num_evals = args.num_updates // args.eval_interval
     for eval_idx in range(num_evals):
@@ -345,9 +370,8 @@ if __name__ == "__main__":
 
         # --- Evaluate agent ---
         rng, rng_eval = jax.random.split(rng)
-        # Evaluates on env from get_eval_env
-        returns = dataset_wrapper.eval_agent(args, rng_eval, agent_state)
-        scores = dataset_wrapper.get_normalized_score(returns) * 100.0
+        returns = eval_agent(args, rng_eval, env, agent_state)
+        scores = d4rl.get_normalized_score(args.dataset_name, returns) * 100.0
 
         # --- Log metrics ---
         step = (eval_idx + 1) * args.eval_interval
@@ -367,23 +391,21 @@ if __name__ == "__main__":
         final_iters = int(onp.ceil(args.eval_final_episodes / args.eval_workers))
         print(f"Evaluating final agent for {final_iters} iterations...")
         _rng = jax.random.split(rng, final_iters)
-        rets = onp.concatenate([dataset_wrapper.eval_agent(args, _rng, agent_state) for _rng in _rng])
-        print("Returns: ", rets)
-        env.close()
-        scores = dataset_wrapper.get_normalized_score(rets) * 100.0
+        rets = onp.concatenate([eval_agent(args, _rng, env, agent_state) for _rng in _rng])
+        scores = d4rl.get_normalized_score(args.dataset_name, rets) * 100.0
         agg_fn = lambda x, k: {k: x, f"{k}_mean": x.mean(), f"{k}_std": x.std()}
         info = agg_fn(rets, "final_returns") | agg_fn(scores, "final_scores")
 
         # --- Write final returns to file ---
         os.makedirs("final_returns", exist_ok=True)
         time_str = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-        filtered_name = args.dataset_name.replace("/", "_").replace("-", "_")
-        filename = f"{args.algorithm}_{filtered_name}_{time_str}.npz"
+        filename = f"{args.algorithm}_{args.dataset_name}_{time_str}.npz"
         with open(os.path.join("final_returns", filename), "wb") as f:
             onp.savez_compressed(f, **info, args=asdict(args))
 
         if args.log:
             wandb.save(os.path.join("final_returns", filename))
 
+    env.close()
     if args.log:
         wandb.finish()

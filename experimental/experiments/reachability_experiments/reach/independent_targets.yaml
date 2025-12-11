@@ -1,0 +1,91 @@
+command:
+  - python3
+  - ${program}
+  - ${args_no_boolean_flags}
+entity: ahoj
+method: grid
+name: PBRL
+program: algorithms/unified.py
+project: reachability-unified
+
+parameters:
+  # --- Experiment ---
+  seed:
+    values: [0, 1, 2, 3, 4]
+  dataset-source:
+    value: minari
+  dataset-name:
+    values: 
+      - square-reach/horizon-10-eps1-v0
+      - square-reach/horizon-10-eps2-v0
+      - square-reach/horizon-10-eps3-v0
+      - square-reach/horizon-50-eps1-v0
+      - square-reach/horizon-50-eps2-v0
+      - square-reach/horizon-50-eps3-v0
+      - square-reach/horizon-200-eps1-v0
+      - square-reach/horizon-200-eps2-v0
+      - square-reach/horizon-200-eps3-v0
+  algorithm:
+    value: cql
+  num_updates:
+    #values: [200_000, 500_000]
+    value : 20_000
+  eval_interval:
+    value: 10_000
+  eval_workers:
+    value: 8
+  eval_final_episodes:
+    value: 1000
+
+  checkpoint:
+    value: False
+  checkpoint_dir:
+    value: "./checkpoints/reachability"
+
+  # --- Logging ---
+  log:
+    value: true
+  wandb_project:
+    value: square-pbrl
+  wandb_team:
+    value: ahoj
+  wandb_group:
+
+    value: debug
+
+  # --- Generic optimization ---
+  lr:
+    value: 3e-4 
+  batch_size:
+    value: 256
+  gamma:
+    value: 0.99
+  polyak_step_size:
+    value: 0.005
+
+  # --- SAC-N ---
+  num_critics:
+    value: 10
+
+  # --- CQL ---
+  shared_targets:
+    value: False
+  pi_operator:
+    value: min
+  critic_regularizer:
+    value: pbrl
+  critic_lagrangian:
+    values:
+      - 0.1
+      - 1.0
+  critic_regularizer_parameter:
+    values:
+      - 4
+
+  # --- Experimental ---
+  pretrain_updates:
+    value: 0
+  ensemble_regularizer:
+    value: none
+  prior:
+    value: False

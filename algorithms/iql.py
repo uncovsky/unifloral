@@ -148,7 +148,12 @@ def eval_agent(args, rng, env, agent_state):
     cum_reward = onp.zeros(args.eval_workers)
     rng, rng_reset = jax.random.split(rng)
     rng_reset = jax.random.split(rng_reset, args.eval_workers)
-    obs = env.reset()
+
+    def _rng_to_integer_seed(rng):
+        return int(jax.random.randint(rng, (), 0, jnp.iinfo(jnp.int32).max))
+
+    seeds_reset = [_rng_to_integer_seed(rng) for rng in rng_reset]
+    obs = env.reset(seed=seeds_reset)
 
     # --- Rollout agent ---
     @jax.jit
@@ -268,9 +273,7 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, value_apply_fn, dataset):
     return _train_step
 
 
-if __name__ == "__main__":
-    # --- Parse arguments ---
-    args = tyro.cli(Args)
+def train_iql(args):
     rng = jax.random.PRNGKey(args.seed)
 
     # --- Initialize logger ---
@@ -351,7 +354,8 @@ if __name__ == "__main__":
         final_iters = int(onp.ceil(args.eval_final_episodes / args.eval_workers))
         print(f"Evaluating final agent for {final_iters} iterations...")
         _rng = jax.random.split(rng, final_iters)
-        rets = onp.concat([eval_agent(args, _rng, env, agent_state) for _rng in _rng])
+        rets = onp.concatenate([eval_agent(args, _rng, env, agent_state) for _rng in _rng])
+        env.close()
         scores = d4rl.get_normalized_score(args.dataset, rets) * 100.0
         agg_fn = lambda x, k: {k: x, f"{k}_mean": x.mean(), f"{k}_std": x.std()}
         info = agg_fn(rets, "final_returns") | agg_fn(scores, "final_scores")
@@ -368,3 +372,9 @@ if __name__ == "__main__":
 
     if args.log:
         wandb.finish()
+
+if __name__ == "__main__":
+    # --- Parse arguments ---
+    args = tyro.cli(Args)
+    # --- Train agent ---
+    train_iql(args)
