@@ -64,7 +64,7 @@ All of the code is located in the directory `ensemble_offline_rl`
 - The subdirectory `results` contains all the data from experiments + visualization scripts, and figures from the thesis.
 
 ### Summary of Training Loop
-The training logic shared by all algorithms is implemented in the function *make_train_step()*  `algorithms/unified.py`. This training loop is instantiated with selected critic and ensemble (diversity) regularization terms, which 
+The training logic shared by all algorithms is implemented in the function `*make_train_step()*` in `algorithms/unified.py`. This training loop is instantiated with selected critic and ensemble (diversity) regularization terms, which 
 are specified via CLI arguments and implemented in their respective `infra/` entries. To see how different hyperparameters from the original algorithms map to parameters of the framework, refer to the `configs` directory.
 
 
