@@ -49,15 +49,16 @@ python algorithms/unified.py --help
 ## Structure of the Repository
 All of the code is located in the directory `ensemble_offline_rl`
 
-The subdirectory `algorithms` contains the unified algorithmic framework `unified.py` + modified BC/ReBRAC baselines from Unifloral used for evaluation.
-The subdirectory `experiments` contains all of the wandb sweep configs with hyperparameter spaces used to obtain the results in the thesis.
-The subdirectory `infra` contains the infrastructure for the framework, which contains:
+- The subdirectory `algorithms` contains the unified algorithmic framework `unified.py` + modified BC/ReBRAC baselines from Unifloral used for evaluation.
+- The subdirectory `experiments` contains all of the wandb sweep configs with hyperparameter spaces used to obtain the results in the thesis.
+- The subdirectory `infra` contains the infrastructure for the framework, which contains:
     - `checkpoints/` utils for checkpointing models
     - `dataset/` generic dataset wrapper which allows us to handle both minari and D4RL environments
     - `ensemble_training/` implementations of critic regularization losses (MSG/EDAC/CQL, ..), can add new regularization terms, etc. here
     - `models/` - actor and critic networks, taken from unifloral + addded randomized prior network support
     - `utils/` - logging for visualizations, diversity of ensemble predictions, scheduling of lagrangians, etc.
-The subdirectory `results` contains all the data from experiments + visualization scripts and figures from the thesis.
+- The subdirectory `results` contains all the data from experiments + visualization scripts and figures from the thesis.
+
 
 
 
