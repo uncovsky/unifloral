@@ -64,8 +64,6 @@ class Args:
 
     # --- Environment ---
     action_scale: float = 1.0 # Scale action space from [-1, 1]^d to [-scale, scale]^d
-    reward_scale: float = 1.0 # a
-    reward_shift: float = 0.0 # b, rewards transformed r -> a * r + b
 
     # --- Generic optimization ---
     actor_lr: float = 1e-4
@@ -87,10 +85,10 @@ class Args:
     awr_temperature: float = 1.0 # Used if operator is awr
     awr_operator : str = "min" # \in {"min", "mean"}, used to compute advantage
     awr_weight_clip: float = 100.0 # clip exp(adv / temp) to avoid large weights
-    softmax_advantages: bool = False # use softmax instead of exp for AWR
     no_entropy_bonus: bool = False # enable / disable entropy bonus
 
     # --- Critic Regularization ---
+    # see infra/ensemble_training/critic_regularization
     critic_regularizer: str = "none" # \in {"none", "cql", "pbrl", "msg"}
     critic_lagrangian: float = 1.0
     critic_depth: int = 3
@@ -100,24 +98,29 @@ class Args:
     # --- experimental OOD filtering in PBRL ---
     filtering_quantile: float = 0.05 # don't penalize least x% of states
 
-    # ---  Pretraining ---
-    pretrain_updates : int = 0
-    pretrain_loss : str = "bc+sarsa"
-    pretrain_lagrangian: float = 1.0
-
     # --- Diversity Regularization ---
-    ensemble_regularizer : str = "none"
+    # see infra/ensemble_training/ensemble_regularization
+    ensemble_regularizer : str = "none" # \in {"none", "edac", "std"}
+    
     reg_lagrangian: float = 1.0
-
-    # --- RPF ---
-    prior: bool = False
-    randomized_prior_depth : int = 3
-    randomized_prior_scale : float = 1.0
 
     # --- Additional Logs ---
     diversity_logs: bool = False # Log std and disagreement
     visualizations: bool = False # Plot Q-values in initial state
 
+    """
+        Unused hyperparameters, 
+    """
+    #randomized prior support
+    prior: bool = False
+    randomized_prior_depth : int = 3
+    randomized_prior_scale : float = 1.0
+
+    # ---  Pretraining ---
+    # see infra/ensemble_trianing/pretraining.py
+    pretrain_updates : int = 0
+    pretrain_loss : str = "bc+sarsa"
+    pretrain_lagrangian: float = 1.0
 
 
 
@@ -272,13 +275,8 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset,
 
                     advantages = adv
                     adv = adv / args.awr_temperature
-
-                    if args.softmax_advantages:
-                        exp_adv = nn.softmax(adv)
-
-                    else:
-                        exp_adv = jnp.exp(adv).clip(max=args.awr_weight_clip)
-                        exp_adv = jax.lax.stop_gradient(exp_adv)
+                    exp_adv = jnp.exp(adv).clip(max=args.awr_weight_clip)
+                    exp_adv = jax.lax.stop_gradient(exp_adv)
 
                     loss = -(exp_adv * bc).mean()
                     entropy = -log_probs.sum(-1)
@@ -551,7 +549,7 @@ def train(args):
             obs=jnp.array(dataset["observations"]),
             action=jnp.array(dataset["actions"]),
             # --- Rescale rewards ---
-            reward=args.reward_scale * jnp.array(dataset["rewards"]) + args.reward_shift,
+            reward=jnp.array(dataset["rewards"]),
             next_obs=jnp.array(dataset["next_observations"]),
             next_action=jnp.roll(jnp.array(dataset["actions"]), -1, axis=0),
             done=jnp.array(dataset["terminals"]),
