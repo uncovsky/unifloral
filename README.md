@@ -60,6 +60,7 @@ All of the code is located in the directory `ensemble_offline_rl`
     - `dataset/` generic dataset wrapper, which allows us to handle both minari and D4RL environments
     - `ensemble_training/` implementations of critic regularization losses (MSG/EDAC/CQL, ..), can add new regularization terms, etc. here
     - `models/` - actor and critic networks, taken from unifloral + added randomized prior network support
+    - `mock_environments/` - gymnasium environments for toy tasks
     - `utils/` - logging for visualizations, diversity of ensemble predictions, scheduling of Lagrangians, etc.
 - The subdirectory `results` contains all the data from experiments + visualization scripts, and figures from the thesis.
 
