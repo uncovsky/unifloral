@@ -71,10 +71,6 @@ parameters:
     values: 
       - 0.1
       - 0.15
-  awr_operator:
-    values:
-      - "min"
-
   pi_operator:
     value: "awr"
 

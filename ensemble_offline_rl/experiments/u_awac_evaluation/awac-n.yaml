@@ -67,9 +67,6 @@ parameters:
     values: 
       - "none"
 
-  awr_operator:
-    values:
-      - "min"
   pi_operator:
     value: "awr"
 

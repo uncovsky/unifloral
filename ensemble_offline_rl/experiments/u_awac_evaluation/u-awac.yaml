@@ -72,10 +72,6 @@ parameters:
       - 0.01
       - 0.05
 
-  awr_operator:
-    values:
-      - "mean"
-
   pi_operator:
     value: "awr"
 
@@ -84,6 +80,7 @@ parameters:
       - 1.0
       - 0.33
       - 0.01
+
   num_critics:
     values: 
       - 10

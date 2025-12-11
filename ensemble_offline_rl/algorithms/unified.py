@@ -83,7 +83,6 @@ class Args:
     pi_operator: str = "min" # \in {"min", lcb", "awr"}
     actor_lcb_penalty: float = 4.0 # Used if operator is lcb to penalize with std
     awr_temperature: float = 1.0 # Used if operator is awr
-    awr_operator : str = "min" # \in {"min", "mean"}, used to compute advantage
     awr_weight_clip: float = 100.0 # clip exp(adv / temp) to avoid large weights
     no_entropy_bonus: bool = False # enable / disable entropy bonus
 
@@ -254,26 +253,9 @@ def make_train_step(args, actor_apply_fn, q_apply_fn, alpha_apply_fn, dataset,
                     )
 
                     bc = pi.log_prob(batch.action).sum(-1)
-
-                    def _pairwise_min(qvals):
-                        """ 
-                            Compute pairwise min over critics
-                            for softer advantage estimation
-                        """
-                        qvals_odd = qvals[:, 1::2]
-                        qvals_even = qvals[:, 0::2]
-                        return jnp.minimum(qvals_odd, qvals_even)
-
-                    # Estimate mean advantage
-                    if args.awr_operator == "mean":
-                        q_pred = _pairwise_min(q_pred)
-                        q_values = _pairwise_min(q_values)
-                        adv = q_pred.mean(-1) - q_values.mean(-1)
-
-                    else:
-                        adv = q_pred.min(-1) - q_values.min(-1)
-
+                    adv = q_pred.min(-1) - q_values.min(-1)
                     advantages = adv
+
                     adv = adv / args.awr_temperature
                     exp_adv = jnp.exp(adv).clip(max=args.awr_weight_clip)
                     exp_adv = jax.lax.stop_gradient(exp_adv)
@@ -497,7 +479,6 @@ def train(args):
     def is_locomotion_dataset(dataset_name):
         names = ["hopper", "halfcheetah", "walker2d"]
         return any(name in dataset_name for name in names)
-
 
     if args.diversity_logs and is_locomotion_dataset(args.dataset_name):
 
