@@ -17,9 +17,6 @@ from helper_scripts.experiment_utils import sweep_folder, load_configs, get_para
 
 if __name__ == "__main__":
 
-    print("Ensuring data for experiments is collected...")
-    # collect_data()
-
     parser = argparse.ArgumentParser()
 
     parser.add_argument("--gpu", type=int, default=0, help="idx of cuda device to use")
@@ -35,18 +32,6 @@ if __name__ == "__main__":
     os.environ["CUDA_VISIBLE_DEVICES"] = str(gpu_num)
     os.environ["XLA_PYTHON_CLIENT_PREALLOCATE"] = "false"
 
-    """
-    "experiments/diversity_experiments/std_ood_data",
-    "experiments/diversity_experiments/shared_indep_targets",
-    "experiments/diversity_experiments/prior_vs_edac",
-
-    "experiments/bias_experiments/sac_n_expert",
-    "experiments/bias_experiments/pbrl_cql_values",
-
-    "experiments/bandit_experiments/configs",
-    "experiments/reachability_experiments/",
-    "experiments/unified_experiments/",
-    """
 
 
     if args.folder is not None:
@@ -60,15 +45,21 @@ if __name__ == "__main__":
 
     # All the experiments in the thesis
     experiment_folders = [
-        #"experiments/bias_experiments/expert_vis",
-        #"experiments/antmaze_ablations",
-        #"experiments/reachability_experiments/ant"
+        "experiments/expert_scalability/extrapolation",
+        "experiments/expert_scalability/instability",
+        "experiments/expert_scalability/scalability",
+        "experiments/sparse_reward_dynamics/",
     ]
 
+    # Full evaluation of unifloral methods
     unifloral_folders = [
-        "experiments/ensemble_awac"
+        "experiments/u_awac_evaluation/",
+        "experiments/main_evaluation/",
+        "experiments/filtered_pbrl_eval/",
     ]
 
+
+    # how many policies to train per algo
     unifloral_runs = 10
 
     for experiment_folder in experiment_folders:
