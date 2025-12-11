@@ -47,7 +47,7 @@ COPY . /work/rl
 # Install mujoco 
 RUN sh install_mujoco.sh
 
-WORKDIR /work/rl/experimental
+WORKDIR /work/rl/ensemble_offline_rl
 
 
 # install mock envs
