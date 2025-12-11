@@ -1,0 +1,66 @@
+command:
+  - python3
+  - ${program}
+  - ${args_no_boolean_flags}
+entity: ensemble_offline_rl
+method: random
+name: edac
+program: algorithms/unified.py
+project: ensemble_offline_rl
+
+parameters:
+  # --- Experiment ---
+  seed:
+    values: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+  dataset-source:
+    value: d4rl
+  dataset-name:
+    values: 
+      - hopper-medium-v2
+  algorithm:
+    value: edac
+  num_updates:
+    value : 1_000_000
+  eval_interval:
+    value: 10_000
+  eval_workers:
+    value: 8
+  eval_final_episodes:
+    value: 1000
+
+  # --- Logging ---
+  log:
+    value: true
+  checkpoint_dir:
+    value: "./checkpoints/cql"
+  checkpoint:
+    value: false
+  # --- Generic optimization ---
+  lr:
+    value: 0.0003
+  actor_lr:
+    value: 0.0003
+  batch_size:
+    value: 256
+  gamma:
+    value: 0.99
+  polyak_step_size:
+    value: 0.005
+
+
+  # --- EDAC specific ---
+  critic_regularizer:
+    value: "none"
+  ensemble_regularizer:
+    value: "edac"
+
+  num_critics:
+    values: [10, 20, 50]
+  reg_lagrangian:
+    values: [0.0, 1.0, 5.0, 10.0, 100.0, 200.0, 500.0, 1000.0]
+
+  shared_targets:
+    value: true
+  pi_operator:
+    value: "min"
+  

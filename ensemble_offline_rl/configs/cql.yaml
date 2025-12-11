@@ -1,0 +1,71 @@
+command:
+  - python3
+  - ${program}
+  - ${args_no_boolean_flags}
+entity: ensemble_offline_rl
+method: random
+name: cql
+program: algorithms/unified.py
+project: ensemble_offline_rl
+
+parameters:
+  # --- Experiment ---
+  seed:
+    values: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+  dataset-source:
+    value: d4rl
+  dataset-name:
+    values: 
+      - hopper-medium-v2
+  algorithm:
+    value: cql
+  num_updates:
+    value : 1_000_000
+  eval_interval:
+    value: 10_000
+  eval_workers:
+    value: 8
+  eval_final_episodes:
+    value: 1000
+
+  # --- Logging ---
+  log:
+    value: true
+  checkpoint_dir:
+    value: "./checkpoints/cql"
+  checkpoint:
+    value: false
+
+  # --- Generic optimization ---
+  lr:
+    values: [1e-4, 3e-4]
+
+  batch_size:
+    value: 256
+  gamma:
+    value: 0.99
+  polyak_step_size:
+    value: 0.005
+
+
+  # --- CQL specific ---
+  critic_regularizer:
+    value: "cql"
+
+  actor_lr:
+    values: [3e-5, 1e-4, 3e-4]
+
+  num_critics:
+    value: 2
+
+  shared_targets:
+    value: true
+
+  pi_operator:
+    value: "min"
+
+  beta_id:
+    value: 0.0
+  critic_lagrangian:
+    values: [0.1, 1.0, 5.0, 10.0]
+  
