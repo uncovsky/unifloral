@@ -52,17 +52,17 @@ python algorithms/unified.py --help
 ## Structure of the Repository
 All of the code is located in the directory `ensemble_offline_rl`
 
-- The subdirectory `algorithms` contains the unified algorithmic framework `unified.py` + modified BC/ReBRAC baselines from Unifloral used for evaluation.
-- The subdirectory `configs` contains yaml configuration files to instantiate all of the baselines inside our unified framework.
-- The subdirectory `experiments` contains all of the wandb sweep configs with hyperparameter spaces used to obtain the results in the thesis.
-- The subdirectory `infra` contains the infrastructure for the framework, which contains:
+- The subdirectory `algorithms/` contains the unified algorithmic framework `unified.py` + modified BC/ReBRAC baselines from Unifloral used for evaluation.
+- The subdirectory `configs/` contains yaml configuration files to instantiate all of the baselines inside our unified framework.
+- The subdirectory `experiments/` contains all of the wandb sweep configs with hyperparameter spaces used to obtain the results in the thesis.
+- The subdirectory `infra/` contains the infrastructure for the framework, which contains:
     - `checkpoints/` utils for checkpointing models
     - `dataset/` generic dataset wrapper, which allows us to handle both minari and D4RL environments
     - `ensemble_training/` implementations of critic regularization losses (MSG/EDAC/CQL, ..), can add new regularization terms, etc. here
     - `models/` - actor and critic networks, taken from unifloral + added randomized prior network support
     - `mock_environments/` - gymnasium environments for toy tasks
     - `utils/` - logging for visualizations, diversity of ensemble predictions, scheduling of Lagrangians, etc.
-- The subdirectory `results` contains all the data from experiments + visualization scripts, and figures from the thesis.
+- The subdirectory `results/` contains all the data from experiments + visualization scripts, and figures from the thesis.
 
 ### Summary of Training Loop
 The training logic shared by all algorithms is implemented in the function `*make_train_step()*` in `algorithms/unified.py`. This training loop is instantiated with selected critic and ensemble (diversity) regularization terms, which 
