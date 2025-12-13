@@ -4,6 +4,12 @@ import yaml
 import wandb
 import warnings
 
+"""
+    Various utilities for working with
+    wandb sweep configurations and launching experiments
+    from directories of sweep files
+"""
+
 def get_param(cfg, key):
     """
         Retrieves a parameter value from the given config dictionary.
