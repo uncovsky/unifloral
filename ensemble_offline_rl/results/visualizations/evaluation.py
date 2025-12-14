@@ -369,210 +369,218 @@ if __name__ == "__main__":
     """
 
     # Full evaluation data
-    df = load_results_dataframe("full_eval_data")
-
+    df_full = load_results_dataframe("full_eval_data")
     # PBRL filtering data
-    #df = load_results_dataframe("filter_eval_data")
+    df_filter = load_results_dataframe("filter_eval_data")
 
     # UWAC evaluation data (for ablation and full eval)
-    # df = load_results_dataframe("uawac_eval_data")
+    df_uwac = load_results_dataframe("u_awac_eval_data")
 
-    #fig, axes = plt.subplots(3, 3, figsize=set_size(width_fraction=0.5,
-    #                                                height_fraction=0.5, subplots=(3, 3)), 
-                             #sharex=True, sharey=False)
-    fig_dims = set_size(width_fraction=1.0, subplots=(3, 3))
-    fig, axes = plt.subplots(3, 3, figsize=fig_dims,
-                                sharex=True, sharey=False)
-    axes = axes.flatten()
-    datasets = df["dataset"].unique()
-    algorithms = df["algorithm"].unique()
+    dfs = [df_full, df_filter, df_uwac, df_uwac]
+    names = ["full", "filter", "u_awac", "awac_n_ablation"]
 
-    # Create consistent color mapping for algorithms
-    colors = plt.cm.tab10.colors[:10]
-    color_map = {alg: colors[i % len(colors)] for i, alg in enumerate(algorithms)}
-    all_results = {}
+    for i, df in enumerate(dfs):
 
-    datasets = [
-        "halfcheetah-medium-expert-v2",
-        'hopper-medium-v2',
-        'walker2d-medium-replay-v2',
-        'pen-human-v1',
-        'pen-cloned-v1',
-        'pen-expert-v1',
-        'antmaze-medium-diverse-v2',
-        'maze2d-large-v1',
-        'kitchen-mixed-v0',
-    ]
+        name = names[i]
 
+        fig_dims = set_size(width_fraction=1.0, subplots=(3, 3))
+        fig, axes = plt.subplots(3, 3, figsize=fig_dims,
+                                    sharex=True, sharey=False)
 
-    """
-     Can further limit algos here, we use AWAC variants for critic ablation
-        also fixed colors for plots
+        axes = axes.flatten()
 
-        awac ablation, don't show pbrl/rebrac
-    algorithms = [
-        "u_awac",
-        "awac",
-        "awac_n",
-    ]
+        datasets = df["dataset"].unique()
+        algorithms = df["algorithm"].unique()
 
-    color_map = {
-            "u_awac": colors[0],
-            "awac": colors[3],
-            "awac_n": colors[1],
-    }
+        # Create consistent color mapping for algorithms
+        colors = plt.cm.tab10.colors[:10]
+        color_map = {alg: colors[i % len(colors)] for i, alg in enumerate(algorithms)}
+        all_results = {}
 
-        PBRL filtering plots
-    color_map = {
-            "rebrac": colors[5],
-            "pbrl": colors[4],
-            "pbrl_f": colors[1],
-    }
+        datasets = [
+            "halfcheetah-medium-expert-v2",
+            'pen-human-v1',
+            'kitchen-mixed-v0',
+            'hopper-medium-v2',
+            'pen-cloned-v1',
+            'antmaze-medium-diverse-v2',
+            'walker2d-medium-replay-v2',
+            'pen-expert-v1',
+            'maze2d-large-v1',
+        ]
 
-        AWAC full eval, don't show awac-n
-    algorithms = [
-            "rebrac", "u_awac", "awac", "pbrl",
+        """
+            Restrict algorithms to those of interest for each eval type
+            and force color consistency with full eval plot
+        """
+        if name == "u_awac":
+            algorithms = [
+                    'u_awac',
+                    'awac',
+                    'pbrl',
+                    'rebrac',
+           ]
+            color_map = {
+                "rebrac": colors[5],
+                "pbrl": colors[4],
+                "u_awac": colors[0],
+                "awac": colors[3],
+            }
+
+        if name == "filter":
+            color_map = {
+                "pbrl_f": colors[1],
+                "pbrl": colors[4],
+                "awac": colors[3],
+                "rebrac": colors[5],
+            }
+
+        if name == "awac_n_ablation":
+            algorithms = [
+                    'awac_n',
+                    'awac',
+                    'u_awac',
             ]
-    color_map = {
-            "rebrac": colors[5],
-            "pbrl": colors[4],
-            "u_awac": colors[0],
-            "awac": colors[3],
-    }
-    """
 
-    print("Evaluating algorithms:", algorithms)
-
-    for idx, dataset in enumerate(datasets):
-        ax = axes[idx]
-
-        all_results[dataset] = {}
-        
-        for algorithm in algorithms:
-            color = color_map[algorithm]
+            color_map = {
+                    "u_awac": colors[0],
+                    "awac": colors[3],
+                    "awac_n": colors[1],
+            }
 
 
-            df_sel = df[(df.dataset == dataset) & (df.algorithm == algorithm)]
-            returns_list = df_sel["final_scores"].tolist()
+        print(f"Creating figure for evaluation: {name}, algorithms used {algorithms}")
 
+        for idx, dataset in enumerate(datasets):
+            ax = axes[idx]
 
-            # Some entries erroneously had extra runs. Trim to first 10.
-            returns_list = returns_list[:10]
-            returns_array = jnp.array(returns_list)
-
-            if len(returns_array) == 0:
-                continue
-
-            # final_scores_mean
-            means_list = df_sel["final_scores_mean"].tolist()[:10]
-            stds_list = df_sel["final_scores_std"].tolist()[:10]
-
+            all_results[dataset] = {}
             
-            mean_of_means = np.mean(means_list)
-            median_of_means = np.median(means_list)
-            std_of_means = np.std(means_list)
+            for algorithm in algorithms:
+                color = color_map[algorithm]
 
-            best_idx = np.argmax(means_list)
-            median_idx = np.argsort(means_list)[len(means_list) // 2]
 
-            best_mean = means_list[best_idx]
-            best_std = stds_list[best_idx]
-            median_mean = means_list[median_idx]
-            median_std = stds_list[median_idx]
+                df_sel = df[(df.dataset == dataset) & (df.algorithm == algorithm)]
+                returns_list = df_sel["final_scores"].tolist()
 
-            # save all
 
-            # Store info for this algorithm
-            all_results[dataset][algorithm] = {
-                "mean_of_means": float(mean_of_means),
-                "median_of_means": float(median_of_means),
-                "std_of_means": float(std_of_means),
-                "best_mean": float(best_mean),
-                "best_std": float(best_std),
-                "median_mean": float(median_mean),
-                "median_std": float(median_std),
-            }
+                # Some entries erroneously had extra runs. Trim to first 10.
+                returns_list = returns_list[:10]
+                returns_array = jnp.array(returns_list)
 
-            results = bootstrap_bandit_trials(
-                returns_array,
-                seed=idx,
-                num_subsample=5,
-                num_repeats=500,
-                max_pulls=100,
-                ucb_alpha=2.0,
-                n_bootstraps=1000,
-                confidence=0.95,
-            )
+                if len(returns_array) == 0:
+                    continue
 
-            ax.plot(
-                results["pulls"],
-                results["estimated_bests_mean"],
-                label=algorithm,
-                color=color,
-            )
-            ax.fill_between(
-                results["pulls"],
-                results["estimated_bests_ci_low"],
-                results["estimated_bests_ci_high"],
-                alpha=0.3,
-                color=color
-            )
+                # final_scores_mean
+                means_list = df_sel["final_scores_mean"].tolist()[:10]
+                stds_list = df_sel["final_scores_std"].tolist()[:10]
 
-        # Add grid to each subplot
-        ax.grid(True, alpha=0.3, linestyle='-', linewidth=0.5)
-        ax.set_axisbelow(True)  # Put grid behind the data
-        
-        ax.set_xscale("log")  # Logarithmic x-axis
-        ax.set_title(f"{dataset}", fontsize=8)
+                
+                mean_of_means = np.mean(means_list)
+                median_of_means = np.median(means_list)
+                std_of_means = np.std(means_list)
 
-    # Create legend with correct color mapping
-    from matplotlib.lines import Line2D
+                best_idx = np.argmax(means_list)
+                median_idx = np.argsort(means_list)[len(means_list) // 2]
 
-    legend_handles = [Line2D([0], [0], color=color_map[algorithm], lw=4,
-                             label=algorithm.replace('_', '-').upper(),
-                             markersize=8)
-                      for algorithm in algorithms]
+                best_mean = means_list[best_idx]
+                best_std = stds_list[best_idx]
+                median_mean = means_list[median_idx]
+                median_std = stds_list[median_idx]
 
-    # Place legend BELOW the figure
-    legend = fig.legend(
-        handles=legend_handles,
-        loc='lower center',
-        bbox_to_anchor=(0.5, 0.02),  # Adjust this value to position below
-        ncol=len(algorithms),
-        frameon=True,
-        fancybox=True,
-        framealpha=0.9,
-        columnspacing=0.5,
-        borderpad=0.75,
-        edgecolor='black',
-        fontsize=8,
-    )
+                # save all
 
-    # add x axis and y axis label
-    fig.text(0.5, 0.12, 'Number of policy evaluations', ha='center', fontsize=10)
-    fig.text(0.01, 0.55, 'Mean D4RL score', va='center', rotation='vertical', fontsize=10)
+                # Store info for this algorithm
+                all_results[dataset][algorithm] = {
+                    "mean_of_means": float(mean_of_means),
+                    "median_of_means": float(median_of_means),
+                    "std_of_means": float(std_of_means),
+                    "best_mean": float(best_mean),
+                    "best_std": float(best_std),
+                    "median_mean": float(median_mean),
+                    "median_std": float(median_std),
+                }
 
-    plt.tight_layout()
-    plt.subplots_adjust(bottom=0.20)  # Increase bottom margin for legend
-    plt.savefig("figures/eval_full.pdf", dpi=300, bbox_inches='tight')
+                results = bootstrap_bandit_trials(
+                    returns_array,
+                    seed=idx,
+                    num_subsample=5,
+                    num_repeats=500,
+                    max_pulls=100,
+                    ucb_alpha=2.0,
+                    n_bootstraps=1000,
+                    confidence=0.95,
+                )
 
-    rows = []
-    for dataset, algos in all_results.items():
-        for algorithm, stats in algos.items():
-            row = {
-                "dataset": dataset,
-                "algorithm": algorithm,
-                "mean_of_means": stats.get("mean_of_means", None),
-                "median_of_means": stats.get("median_of_means", None),
-                "std_of_means": stats.get("std_of_means", None),
-                "best_mean": stats.get("best_mean", None),
-                "best_std": stats.get("best_std", None),
-                "median_mean": stats.get("median_mean", None),
-                "median_std": stats.get("median_std", None),
-            }
-            rows.append(row)
+                ax.plot(
+                    results["pulls"],
+                    results["estimated_bests_mean"],
+                    label=algorithm,
+                    color=color,
+                )
+                ax.fill_between(
+                    results["pulls"],
+                    results["estimated_bests_ci_low"],
+                    results["estimated_bests_ci_high"],
+                    alpha=0.3,
+                    color=color
+                )
 
-    # Convert to DataFrame
-    df = pd.DataFrame(rows)
-    # Save as CSV
-    df.to_csv("gt_results.csv", index=False)
+            # Add grid to each subplot
+            ax.grid(True, alpha=0.3, linestyle='-', linewidth=0.5)
+            ax.set_axisbelow(True)  # Put grid behind the data
+            
+            ax.set_xscale("log")  # Logarithmic x-axis
+            ax.set_title(f"{dataset[:-3]}", fontsize=8)
+
+        # Create legend with correct color mapping
+        from matplotlib.lines import Line2D
+
+        legend_handles = [Line2D([0], [0], color=color_map[algorithm], lw=4,
+                                 label=algorithm.replace('_', '-').upper(),
+                                 markersize=8)
+                          for algorithm in algorithms]
+
+        # Place legend BELOW the figure
+        legend = fig.legend(
+            handles=legend_handles,
+            loc='lower center',
+            bbox_to_anchor=(0.5, 0.02),  # Adjust this value to position below
+            ncol=len(algorithms),
+            frameon=True,
+            fancybox=True,
+            framealpha=0.9,
+            columnspacing=0.5,
+            borderpad=0.75,
+            edgecolor='black',
+            fontsize=8,
+        )
+
+        # add x axis and y axis label
+        fig.text(0.5, 0.12, 'Number of policy evaluations', ha='center', fontsize=10)
+        fig.text(0.01, 0.55, 'Mean D4RL score', va='center', rotation='vertical', fontsize=10)
+
+        plt.tight_layout()
+        plt.subplots_adjust(bottom=0.20)  # Increase bottom margin for legend
+        plt.savefig(f"figures/eval_{name}.pdf", dpi=300, bbox_inches='tight')
+
+        rows = []
+        for dataset, algos in all_results.items():
+            for algorithm, stats in algos.items():
+                row = {
+                    "dataset": dataset,
+                    "algorithm": algorithm,
+                    "mean_of_means": stats.get("mean_of_means", None),
+                    "median_of_means": stats.get("median_of_means", None),
+                    "std_of_means": stats.get("std_of_means", None),
+                    "best_mean": stats.get("best_mean", None),
+                    "best_std": stats.get("best_std", None),
+                    "median_mean": stats.get("median_mean", None),
+                    "median_std": stats.get("median_std", None),
+                }
+                rows.append(row)
+
+        df = pd.DataFrame(rows)
+
+        # Export CSV with aggregated results for plots
+        df.to_csv(f"{name}_results.csv", index=False)
