@@ -9,7 +9,7 @@ The framework generalizes several uncertainty-based offline RL algorithms, namel
 - **PBRL** — [Pessimistic Bootstrapping for Uncertainty-Driven Offline Reinforcement Learning](https://arxiv.org/abs/2202.11566)
 - **MSG** — [Why So Pessimistic? Estimating Uncertainties for Offline RL through Ensembles, and Why Their Independence Matters](https://arxiv.org/abs/2205.13703)
 - **SAC-N, EDAC** — [Uncertainty-Based Offline Reinforcement Learning with Diversified Q-Ensemble](https://arxiv.org/abs/2110.01548)
-- As well as non-ensemble baselines of CQL and AWAC.
+- As well as non-ensemble baselines of **CQL** and **AWAC**.
 
 The framework and evaluation protocol are built upon the Unifloral library available [here](https://github.com/EmptyJackson/unifloral). 
 
