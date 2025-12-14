@@ -557,8 +557,8 @@ if __name__ == "__main__":
         )
 
         # add x axis and y axis label
-        fig.text(0.5, 0.12, 'Number of policy evaluations', ha='center', fontsize=10)
-        fig.text(0.01, 0.55, 'Mean D4RL score', va='center', rotation='vertical', fontsize=10)
+        fig.text(0.5, 0.12, 'Online tuning budget (episodes)', ha='center', fontsize=10)
+        fig.text(0.0, 0.55, 'Mean D4RL score', va='center', rotation='vertical', fontsize=10)
 
         plt.tight_layout()
         plt.subplots_adjust(bottom=0.20)  # Increase bottom margin for legend
