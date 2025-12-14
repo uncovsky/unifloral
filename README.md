@@ -4,15 +4,12 @@ This repository implements a generic algorithmic framework for ensemble-based of
 This framework is the subject of my Master's thesis, available [here](https://is.muni.cz/auth/th/dxwqj/).
 
 
-The framework generalizes several offline RL algorithms, namely:
+The framework generalizes several uncertainty-based offline RL algorithms, namely:
 
 - **PBRL** — [Pessimistic Bootstrapping for Uncertainty-Driven Offline Reinforcement Learning](https://arxiv.org/abs/2202.11566)
 - **MSG** — [Why So Pessimistic? Estimating Uncertainties for Offline RL through Ensembles, and Why Their Independence Matters](https://arxiv.org/abs/2205.13703)
-- **SAC-N, EDAC** — [Uncertainty-Based Offline Reinforcement Learning with Diversified Q-Ensemble](https://arxiv.org/abs/2110.01548) 
-
-And can be extended to accommodate other modifications of these algorithms with other regularization terms, such as
-- **RORL** — [RORL: Robust Offline Reinforcement Learning via Conservative Smoothing](https://arxiv.org/abs/2206.02829)
-
+- **SAC-N, EDAC** — [Uncertainty-Based Offline Reinforcement Learning with Diversified Q-Ensemble](https://arxiv.org/abs/2110.01548)
+- As well as non-ensemble baselines of CQL and AWAC.
 
 The framework and evaluation protocol are built upon the Unifloral library available [here](https://github.com/EmptyJackson/unifloral). 
 
