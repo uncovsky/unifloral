@@ -43,9 +43,9 @@ You can rerun all of the experiments from the thesis (sequentially) like so:
 ```bash
 python experiments/run_experiments --entity YOUR_WANDB_ENTITY --project YOUR_WANDB_PROJECT
 ```
-Note that the experiments are set up via wandb sweeps, which requires you to have a wandb account. A single run of a selected algorithm can be executed as follows:
+Note that the experiments are set up via wandb sweeps, which requires you to have a wandb account. A single run of a selected algorithm can be executed e.g. as follows:
 ``` bash
-python algorithms/unified.py --critic_regularizer [msg|pbrl|cql] --critic_lagrangian lambda --dataset_name [hopper-medium-v2, ...]
+python algorithms/unified.py --critic_regularizer msg --critic_lagrangian 1 --dataset_name hopper-medium-v2
 ```
 You can also use the help flag for parameter names and their semantics. 
 ``` bash
